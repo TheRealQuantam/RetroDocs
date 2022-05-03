@@ -1,0 +1,311 @@
+CAPCOM SOUND ENGINE 1 FORMAT SPECIFICATION
+v1.0
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+The Capcom 1 engine is the first of three sound engines used by in-house developers at Capcom to develop games for the Nintendo Entertainment System. Prior to Capcom 1, all Capcom console games were developed by third-party developers with their own sound engines, and Capcom would make occasional use of third-party developers through the entire NES life cycle. Capcom 1 is relatively obscure, only being used for two games: Commando and Trojan. It would be shortly succeeded by the much more popular Capcom 2 engine, used by games such as Bionic Commando and Mega Man 1 and 2, which took significant inspiration from the music data format of Capcom 1. It would ultimately be succeeded by the equally popular and far more powerful Capcom 3 used for such games as Mega Man 3-6 and a revised version would take Capcom into the Super NES era. Today, Capcom 1 remains of interest only to chiptune and history enthusiasts, for whom it is documented here.
+
+Capcom 1 is tightly tied to the NES' Audio Processing Unit and there is minimal abstraction from the hardware, requiring some knowledge of the APU registers and data format to understand the audio format. This will be briefly described here as the instrument format is described, with the assumption that the reader knows the basic features of the APU (e.g. what type of channels it has), but is not familiar with the low-level details such as register format. For further information see a proper APU programming reference such as https://www.nesdev.org/wiki/APU_registers
+
+Some general notes in interpreting this specification:
+- All word (16-bit) values in the format are little-endian, with the least-significant byte preceding the most-significant.
+- All values are unsigned unless noted otherwise.
+- All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
+- Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context. In some sound effect commands it is necessary to mix hex and binary notation within the same sequence of bytes.
+- When talking about period values e.g. "set period to x", this refers to the true period (inversely proportionate to frequency); this is NOT the value of the APU period registers, which are 1 less than the period.
+
+Instrument Format
++0 byte: The value to be loaded into the ctrl 1 register ($4000, $4004, etc.).
+For square wave and noise channels: ddLv xxxx
+	d: For square wave only, sets the duty cycle for the channel (0: 12.5%, 1: 25%, 2: 50%, 3: 75%). Does nothing for noise channel.
+	L: Does not automatically terminate the note when the length counter expires. If v is clear, this causes the fade out to loop in a sawtooth pattern.
+	v: Volume flag, used to interpret x.
+	x: If v is set, the volume for the channel. If v is clear, volume fades out from 15 (max) to 0 at a rate of 1 volume every x+1 quarter-frames.
+	
+For triangle channel: cLLL LLLL
+	c: When set, length counter and linear counter are stopped and the next note plays forever if L is nonzero, and silences the channel if L is 0. When clear, the note is stopped when the length counter or linear counter expires.
+	L: Linear counter duration = L+1 quarter-frames.
+	
++1 byte: eppp nsss: Square wave pitch slide parameters ($4001, $4005). Has no effect on other channels.
+	e: Enable pitch slide
+	p: Pitch slide period. Pitch is modified every p+1 half-frames.
+	n: Negative flag. If set, the square wave period is reduced (rising pitch), else the period is increased (falling pitch).
+	s: Pitch slide amount. The amount of change to the period is relative to the current period, resulting in linear pitch slides according to the following table (note that it will be slightly detuned because of how the period registers works):
+		0: 100% change: if n silences channel after 1 period, else decreases pitch by 1 octaves/period
+		1: 50% change: if n +1 octave/period, else -7.02 semitones/period
+		2: 25% change: if n +4.98 semitones/period, else -3.86 semitones/period
+		3: 12.5% change: if n +2.31 semitones/period, else -2.04 semitones/period
+		4: 6.25% change: if n +1.12 semitones/period, else -1.05 semitones/period
+		5: 3.12% change: if n +54.96 cents/period, else -53.27 cents/period
+		6: 1.56% change: if n +27.26 cents/period, else -26.84 cents/period
+		7: 0.78% change: if n +13.58 cents/period, else -13.47 cents/period
+		
+	Note: The absolute range of the square wave channels is 54.6 Hz (~A1) to 12.4 KHz (~G9), and any channel that is taken outside that range by pitch slide will be silenced. The pitch slide unit ALWAYS computes the next period value and checks it for valid range, but the period value is only updated if pitch slide is enabled; n should be set whenever e is not set to avoid this effect.
+	
++2 byte: LLLL L---: Length counter duration portion of period high register value ($4003, $4007, etc.).
+	L: Length counter duration/period. Values 0-$1f are an index into the following lookup table which lists durations in decimal half-frames. For an explanation of why these values, see https://www.nesdev.org/wiki/APU_Length_Counter
+		0x: 10,254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
+		1x: 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
+		
+Instrument examples; note that some of these examples, despite being taken directly from Trojan, have some values that do nothing:
+3F 00 00 (square wave): 
+	0:m = 0: Duty cycle 12.5%
+	0:L = 1: Disable length counter
+	0:v = 1: No fade out
+	0:x = $f: Set volume to (decimal) 15
+	1:e = 0: No pitch slide
+	1:n = 0: BAD, and should be set since e = 0. Has the side effect that it silences the lowest octave of notes (A1-G#2).
+8B 00 00 (triangle): 
+	0:c = 1, 0:L = $b: Disable length/linear counters as L != 0
+5B 00 68 (triangle): 
+	0:c = 0: Enable counters
+	0:L = $5b: Set linear counter to $5b+1=$5c quarter-frames
+	2:L = $d: Set length counter to (decimal) 12 half-frames
+81 00 00 (noise):
+	0:L = 0: Enable length counter
+	0:v = 0: Fade out
+	0:x = 1: Decrement volume every 1+1=2 half-frames
+	2:L = 0: Set length counter to (decimal) 10 half-frames
+
+MUSIC FORMAT
+
+Basic Features:
+- Compact single-byte notes/rests encoding both key and length
++ Staff notation style divisive rhythm system
+	- Chromatic scale from A1 (55 Hz) to A#8 (7457 Hz) for square wave (triangle is one octave lower)
+	- Note durations of whole notes through 32nd notes
+	- Dot and triplet modifiers
+	- Frame-based tempos of 450/x BPM on NTSC 60 Hz (375/x on PAL 50 Hz)
+- Separate event sequences for each channel
++ Simple instrument format based directly on NES APU feature set
+	- Duty cycle, volume, fade out, pitch slide, and note duration for square wave channels
+	- Note duration for triangle channel
+	- Volume, fade out, and note duration for noise channel
+	- No DMC channel support
+- Single-level unnested loops
+- Loop feature can be abused to create subroutines
+
+Major Differences with Capcom 2:
++ Very different instrument format
+	- Duty cycle, volume, fade out, pitch slide, and note duration all specified in instruments, not via events
+	- Higher-resolution fade out, but no fade in and cannot combine volume with fade
+	- Higher-resolution square wave pitch slides, and slides are linear pitch, but lacks generalized pitch slide
+	- Per channel instrument definitions
++ Lacks Capcom 2's single-frame gap between notes
+	- Implicit tie
+	- Allows slur
+	- Distinguishing consecutive notes of same key must be done manually
+- No support for vibrato or tremolo
+- No support for periodic noise
+
+Music Header Format:
++0 byte: ---- pppp: Music priority. New music will only play if equal or higher priority than the current music. Must be at least 1.
++1 struct[4]: Channel data in order of square 1, square 2, triangle, noise
+	+0 word: Address of channel events sequence. If 0 the channel is not used by the track.
+	+2 word: Address of channel instrument table
+	
+Channel Data Format
+
+With a single exception, all channel events share the same general format: LLLk kkkk. How this is interpreted depends on whether it's a note/rest or a command.
+
+For notes and rests, L specifies the base length of the event = 2^L/4 * speed frames (2^L/128 note at 450/speed BPM); if the note is dotted or triplet, the length is multiplied by 3/2 and 2/3, respectively. As the length must be a whole number of frames, this means L must be >= 2 for normal notes and >= 3 for dotted notes. Note that unlike in Capcom 2, there is NO implicit gap between the end of one consecutive note and the start of the next.
+
+To allow single-byte notes/rests, 5 bits are available to specify key. k = 0 represents a rest, and k = $1f indicates a command code in L, providing a 30-key window from 1-$1e. For the noise channel, whose valid range is 0-$f, this range is represented by keys 1-$10 directly. For melodic channels this key number is relative to the base key set with the set base key command (command $5f), and the actual key played is base key + k. For square wave channels the combined key falls in the range of C1 (0) through B8 ($5f), while the triangle channel is one octave lower; note that keys below A1 for square wave and A0 for triangle are invalid and act as rests.
+
+The following commands are defined:
+1f ss: Set speed to s (default of 1), setting the tempo to 450/s BPM.
+30: Set triplet mode for next note
+3f ii: Set instrument i (default of 0)
+5f kk: Set base key to k, where 0 = C1 (32.7 Hz) for square wave, triangle is 1 octave lower. This MUST be set prior to playing notes for melodic channels, but is ignored on the noise channel.
+7f nn xx yy: Loop n times based on channel's loop counter.
+	n = 0: Go to y:x unconditionally
+	n != loop counter: Increment loop counter and go to y:x
+	n = loop counter: Set loop counter to 0 and continue
+9f, bf: INVALID
+df: Dot IMMEDIATELY following note/rest (no other events may come between $df and the note).
+ff: End of track
+
+Examples
+
+Square wave channel:
+3F 00: Set instrument 0
+1F 03: Set speed to 3 (150 BPM)
+5F 14: Set base key to $14 (A2-D5 range)
+0111 0001: Note
+	L = 3: 2^3/128 = 1/16th note
+	k = $11: Play note $11+$14=$25 (C#4)
+0110 0000: Rest
+	L = 3: 1/16th note
+	k = 0: Rest
+7F 03 0B AF: Loop
+	n = 3: Loop (repeat) 3 times
+	b:a = $af0b: Go to $af0b until loop counter = 3, then reset loop counter
+FF: End of track
+
+Noise channel. Note that for these examples the length counter is set to 5 frames, or a bit less than 1/16 note at the 150 BPM of the track:
+1010 1001: Note
+	L = 5: 2^5/128 = 1/4 note. However note will be silenced by length counter after about 1/16 note.
+	k = 9: Play noise value 9-1=8
+0110 1011: Note
+	L = 3: 1/16th note. Note will be silenced slightly early by length counter.
+	k = $b: Play noise value $b-1=$a
+
+SOUND EFFECT FORMAT
+
+Basic Features:
+- Frame-based timing
+- Direct frequency specification
+- Identical instrument format as for music
+- Single event sequence, per-channel instrument definitions
+- Linear period pitch slide on all channels in addition to linear pitch slide on square channels
+- Single-level unnested loops
+- Loop feature can be abused to create subroutines
+
+Major Differences with Capcom 2:
+- Many sound parameters specified via instrument rather than explicit register writes
+- Per-channel instrument definitions
+- No support for vibrato or tremolo
+- No support for periodic noise
+
+Sound Effect Header Format
++0 byte: pppp 0000: Sound effect priority. New sounds will only play if equal or higher priority than the currently playing sound.
++1 word[4]: Addresses of channel instrument tables in order of square 1, square 2, triangle, and noise. If 0 the channel is not used by the sound effect.
+
+Sound effects are encoded very differently than music, and equally differently than their Capcom 2 counterparts. There is only a single event stream, which begins after the header. Time is split up into blocks of events that happen on all channels simultaneously, which are themselves split into one to four subblocks: one for each channel used in the order of square 1, square 2, triangle, and noise. Each subblock consists of zero or more non-terminal commands followed by one terminal event which signals the end of that channel's subblock. However, unlike events, each channel has its own instrument table.
+
+Sound effects include one feature that would not be added to music until Capcom 2: generalized pitch slide that can occur on any channel. Unlike the instrument's pitch slide, this mechanism adds a constant value to the channel's period every non-event frame (linear period), and is NOT linear pitch; in terms of pitch, rising pitch slides will accelerate over time, and falling pitch slides will decelerate over time.
+
+Note that for the event specification there is some overlap between bit fields to make representation easier. The first matching definition is the correct one for a given event, as more-specific encodings are listed before more general encodings.
+
+Terminal Sound Effect Formats
+---0 -000 00 -- --: Silence channel and move to next channel
+---0 1111 -- -- pp -iii iiii: Set pitch slide and instrument for current channel
+	- Set pitch slide per frame to p, a two's complement signed number that is added to the period register value every non-event frame (linear period). p > 0 produces falling pitch, and p < 0 produces rising pitch.
+	- Set instrument to i
+	- If p = 0 update channel registers with new instrument values, else registers will not be updated until the next non-event frame.
+	- Move to next channel
+---0 -HHH LL pp -iii iiii: Set period to H:L+1 then behave like event ---0 1111
+
+Non-terminal Sound Effect Commands
+---1 --00 nn: Set delay until next block to n frames. The delay occurs after all subblocks of the current block have been executed. If multiple delays are set in the same block, only the last one actually occurs.
+---1 --01 nn xx yy: Loop
+	n = 0: Go to y:x unconditionally
+	n != loop counter: Increment loop counter and go to y:x
+	n = loop counter: Set loop counter to 0 and continue
+---1 ----: End track and silence this and future channels. E.g. if found on triangle channel, silences triangle and noise on current frame and all channels after next delay.
+
+Examples
+
+Header: 
+E0: Priority $e
+00 00: Does not use square wave 1 channel
+47 BE: Square wave 2 instrument table located at $be47
+00 00: Does not use triangle channel
+4D BE: Noise instrument table located at $be4d
+
+Event data (located immediately after header):
+10 04: Square 2: Set delay until next block
+	n = 4: 4 frames until next block
+01 C5 30 00: Square 2: Terminal event
+	H:L = $1c5: Set channel period to $1c5+1=$1c6 (~246 Hz)
+	p = $30: Set pitch slide to add $30 to period every non-event frame (falling pitch). As p != 0, hardware registers will not be written until the next frame.
+	i = 0: Set instrument to 0
+00 0F 00 00: Noise: Terminal event
+	H:L = $f: Set noise value to $f-1=$e
+	p = 0: No pitch slide. Registers will be written this frame.
+	i = 0: Set instrument 0
+10 04: Square 2 (4 frames later): Set delay until next block
+	n = 4: 4 frames until next block
+02 FA F0 01: Square 2: Terminal event
+	H:L = $2fa: Set channel period to $2fa+1 = $2fb (~147 Hz)
+	p = -$10: Set pitch slide to subtract $10 from period every non-event frame (rising pitch). As p != 0, hardware registers will not be written until the next frame.
+	i = 1: Set instrument to 1
+00 0F 00 00: Noise: Identical to last noise event
+12: Square 2: End of track. Silences all channels immediately.
+
+SOUND TABLES
+
+All addresses are in memory. The file offset = bank * 0x4000 + addr - 0x7ff0.
+
+Commando (US)
+Sound bank: 0, table address: $8700, number of entries: 31
+
+Track   Addr   P Sq1T Sq1I Sq2T Sq2I TriT TriI NoiT NoiI
+0(0)   @873e: 0f 874f 0000 8750 0000 8751 0000 8752 0000 (INVALID)
+1(1)   @873e: 0f 874f 0000 8750 0000 8751 0000 8752 0000 (INVALID)
+2(2)   @8753: 02 8764 8821 0000 0000 87dd 8827 0000 0000
+3(3)   @882a: 02 883b 8b19 8916 8b1f 89ec 8b25 8ab5 8b2b
+4(4)   @8b2e: 01 8b3f 8bca 8b61 8bcd 8b83 8bd0 8ba5 8bd3
+5(5)   @8bd6: 02 8be7 8cdd 8c39 8ce0 8c8b 8ce3 0000 0000
+6(6)   @8ce6: 02 8cf7 8e47 8d33 8e4a 8d6f 8e4d 8dc9 8e50
+7(7)   @8e53: 02 8e64 8ed3 8e82 8ed6 8ea0 8ed9 8eb2 8edc
+8(8)   @8edf: 02 8ef0 8f41 8f0a 8f44 8f23 8f47 0000 0000
+9(9)   @8f4a: 02 8f5b 9161 8fb2 9167 90a7 916a 913b 916d
+10(a)  @9170: 02 9181 91d0 9199 91d6 91b7 91dc 0000 0000
+11(b)  @91e2: 02 91f3 9233 9209 9239 9221 923f 0000 0000
+12(c)  @9242: 02 9253 9376 92b0 937c 930d 9382 0000 0000
+13(d)  @9388: 02 9399 9443 93e3 9446 942d 9449 0000 0000
+14(e)  @944c: 01 945d 96f8 951c 96fe 95d5 9704 9682 9707
+
+Track   Addr  P  Sq1I Sq2I TriI NoiI
+15(f)  @970a: 20 0000 971a 0000 0000
+16(10) @971d: 50 0000 9731 0000 9734
+17(11) @9737: 40 0000 975f 0000 9765
+18(12) @976b: f0 9817 981d 0000 9823
+19(13) @9829: e0 0000 9886 0000 9895
+20(14) @98a4: e0 0000 9902 0000 9911
+21(15) @9920: f0 0000 996f 0000 997e
+22(16) @998d: f0 0000 99dc 0000 99eb
+23(17) @99fa: f0 0000 9a11 0000 9a14
+24(18) @9a17: 30 0000 9a5d 0000 0000
+25(19) @9a60: f0 0000 9a8c 0000 0000
+26(1a) @9a9b: c0 0000 9aeb 0000 9aee
+27(1b) @9afa: c0 9b2c 9b38 0000 0000
+28(1c) @9b44: f0 9b76 9b7c 9b82 9b88
+29(1d) @9b8e: d0 9bf4 9bfa 9c00 0000
+30(1e) @9c03: 10 9c0d 0000 0000 0000
+
+Trojan (US)
+Sound bank: 6, table address: $a680, number of entries: 36
+
+Track   Addr   P Sq1T Sq1I Sq2T Sq2I TriT TriI NoiT NoiI
+0(0)   @a6c8: 0e a6d9 a771 a6f6 a774 a713 a777 a749 a77d
+1(1)   @a780: 0e a791 a972 a836 a975 a8bc a978 0000 0000
+2(2)   @a97e: 0e a98f aa92 a9f0 aa95 aa51 aa98 0000 0000
+3(3)   @aa9e: 0e ab59 ac8e abf3 ac91 aaaf ac94 0000 0000
+4(4)   @ac97: 0e 0000 0000 0000 0000 aca8 ad25 ace2 ad28
+5(5)   @ad2b: 0e ad3c ada7 ad54 adaa ad66 adad ad8f adb3
+6(6)   @adb6: 0e adc7 aea5 ae01 aea8 ae3b aeab ae6b aeae
+7(7)   @aeb1: 0f aec2 b136 af67 b139 b002 b13c b0b6 b13f
+9(9)   @b142: 0e b153 b337 b1e0 b33a b254 b33d 0000 0000
+10(a)  @b340: 0e b351 b489 b3de b48c b46b b48f 0000 0000
+11(b)  @b492: 0e b4a3 b507 b4bc b50a b4d5 b50d b4ee b513
+12(c)  @b516: 0e b527 b790 b5fe b793 b6e5 b796 0000 0000
+13(d)  @b79c: 0e b7ad b953 b844 b956 b8be b959 0000 0000
+14(e)  @b95f: 0e b9b6 ba80 b970 ba83 b9fc ba86 ba36 ba89
+15(f)  @ba8c: 0e ba9d bb2e bab9 bb31 bad5 bb34 bafa bb37
+
+Track   Addr  P  Sq1I Sq2I TriI NoiI
+8(8)   @be6c: f0 bf18 bf1b bf1e bf21
+16(10) @bb3a: 50 0000 bb4a 0000 0000
+17(11) @bb4d: 30 0000 bb5d 0000 0000
+18(12) @bb60: e0 bbbe bbc4 bbca 0000
+19(13) @bbd0: 50 0000 bbe6 0000 0000
+20(14) @bbec: 40 0000 bc0a 0000 bc0d
+21(15) @bc10: 70 0000 bc80 0000 0000
+22(16) @bc83: 60 0000 bc93 0000 0000
+23(17) @bc96: 30 0000 bcb4 0000 bcb7
+24(18) @bcba: 50 0000 bcce 0000 bcd1
+25(19) @bcd4: 70 0000 bcf2 0000 bcf5
+26(1a) @bcf8: 40 0000 bd14 0000 0000
+27(1b) @bd17: 50 0000 bd2b 0000 0000
+28(1c) @bd2e: 40 0000 bd56 0000 bd59
+29(1d) @bd5c: 50 0000 bd6c 0000 0000
+30(1e) @bd6f: e0 bdf7 bdfa bdfd 0000
+31(1f) @be00: c0 0000 be26 0000 0000
+32(20) @be29: e0 0000 be47 0000 be4d
+33(21) @be50: 70 0000 0000 0000 be66
+34(22) @bf24: 60 0000 0000 0000 bf3a
+35(23) @bf40: a0 0000 0000 0000 bf56
