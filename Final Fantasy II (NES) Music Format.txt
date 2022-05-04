@@ -1,0 +1,267 @@
+FINAL FANTASY II (NES) MUSIC FORMAT
+v0.1
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+The Final Fantasy II sound engine, just like the game itself, sits directly between Final Fnatasy and Final Fantasy III, showing a clear intermediate step between predecesor and succesor. Although Toshiaki Imai's Final Fantasy engine and the subsequent engines by Hiroshi Nakamura all appear to be distinct codebases, the continuity of features and music encoding is unmistakable, and for the most part music composed in earlier engines can be converted to work on later engines.
+
+The FF2 engine is not entirely abstracted from the NES' Audio Processing Unit hardware. In particular, the FF3 engine allows partial direct access to the ctrl 1 ($4000, $4004, etc.) register. The details of this will be discussed under the corresponding command. For further information see a proper APU programming reference such as https://www.nesdev.org/wiki/APU_registers
+
+Basic Features:
+- Compact single-byte notes and rests
++ Staff notation style divisive rhythm system
+	- 6-octave chromatic scale from C2 (65.4 Hz) to B7 (7457 Hz) for square wave (triangle is one octave lower)
+	- 16 note lengths from whole notes through 64th notes with dots and triplets for some lengths
+	- Length tie to create arbitrary lengths
+	- High-precision tempo from 2 to 362 BPM
++ Complex timbre support
+	Square channels: Duty cycle, channel volume, fade out, volume envelope, and linear period pitch envelope
+	Triangle channel: Linear period pitch envelope
+- 3 channels - square 1 and 2 and triangle - each with separate event sequences
+- Single-level unnested loops, with loop break points possible for "play twice" loops
+- Has the unusual feature that when a new non-looping track (e.g. a fanfare) is begun the position in the previous track is preserved and is automatically restored when the non-looping track ends.
+
+Major Differences with Final Fantasy:
+- 2 additional octaves
+- Proper tempo system
+- Proper implementation of rests and tied length
++ Multiple envelope changes
+	- Envelopes no longer required
+	- Can specify channel volume in addition to volume envelope
+	- The addition of pitch envelopes
+	- Support for (short) looping envelopes allowing pitch slide, vibrato, and tremolo
+- Introduction of the "odd loop break" mechanic
+- Ability to resume the previous track when interrupted with a non-looping track
+
+Some general notes in interpreting this specification:
+- All word (16-bit) values in the format are little-endian, with the least-significant byte preceding the most-significant.
+- All values are unsigned unless noted otherwise.
+- All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
+- Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
+
+MUSIC FORMAT
+
+Track Header Structure:
++0 word[3]: Channel data addresses in order of square 1, square 2, triangle
+
+Channel Data FORMAT
+
+Notes and rests are encoded as single-byte events of the format kL. For notes, k is 0-$b, corresponding to C-B within the current octave, and L is the length the note should play before continuing.
+
+Key number: 0   1   2   3   4   5   6   7   8   9  $a  $b
+Key:        C  C#   D  D#   E   F  F#   G  G#   A  A#   B
+
+Events of the format dL are tied lengths. These events serve to continue the previous note and extend its length by L time. Unlike in FF3, tied lengths need not immediately follow their notes, and other events may come between them. It is thus possible to make some modifications to the note as it is playing, though some care must be taken with this because not everything is made to work in such a way; e.g. the current envelope positions will only be reset by the start of a new note, NOT by a change to different envelopes.
+
+Finally, rests have the form cL. Unlike in FF1, rests in FF2 behave as expected and properly silence the preceding note.
+
+In all cases L is a length code from the following table:
+
+                      whole  half  4th  8th  16th  32nd  64th
+Normal note lengths:      0     2    5    8    $b    $d
+Dotted note lengths:            1    3    6     9
+Triplet note lengths:           4    7   $a    $c    $e    $f
+
+In addition to notes, rests, and tied lengths, the following commands are defined:
+e0 tt: Set global tempo to t * 2 BPM. Defaults to 75 (150 BPM). MUST NOT exceed 181 (362 BPM).
+e1-ef: Set square wave channel volume to 1 ($e1)-15 ($ef). Defaults to 15. IGNORED if channel has no volume envelope (in this case command $f6 can be used to set the volume by directly setting the ctrl 1 register). This MUST NOT be used on the triangle channel.
+f0-f5: Set current octave to 0 ($f0)-5 ($f5). Octave 0 begins at C2 for square wave, while triangle wave is 1 octave lower. Has no default, and MUST be set prior to playing notes.
+f6 CC vv ww pp qq: Set timbre and envelopes. Set ctrl 1 to C, set volume envelope address to w:v ($ffff if none) and pitch envelope address to q:p ($ffff if none). 
+For square wave channels C has the form dd1v xxxx (default of $30):
+	d: Duty cycle: 12.5% (0), 25% (1), 50% (2), 75% (3)
+	v: Determines how to interpret x. Must be set if a volume envelope is used.
+	x: If v is set, the volume for the channel (ignored if a volume envelope is used). If v is clear, volume fades out from 15 to 0 at a rate of 1 volume every x+1 quarter-frames.
+	
+For triangle channel C should always be set to $80 (the default).
+
+f7 nn: Begin loop and set loop counter to n (> 0)
+f8-fb: Begin loop and set loop counter to 2 ($f8)-5 ($fb)
+fc xx yy: End loop. Decrement loop counter and if not 0 go to y:x, else end loop and continue.
+fd xx yy: Odd loop break. If loop counter is odd (1, 3, etc.) end loop and go to y:x, else continue.
+fe xx yy: Go to y:x
+ff: End track and resume previous track if any
+
+Examples
+
+Square wave:
+F6 B0 37 BD FF FF: Set timbre and envelopes
+	1:d = 2: Set duty cycle to 50%
+	1:v = 1: Set volume (actual volume is ignored because a volume envelope is set)
+	w:v = $bd37: Set volume envelope address to $bd37
+	q:p = $ffff: No pitch envelope
+E0 32: Set global tempo
+	n = $32: Set tempo to $32*2=100 BPM
+F1: Set current octave to 1 (starting at C3)
+0B: Play note
+	k = 0: C key
+	L = $b: 16th note
+CB: Rest
+	L = $b: 16th note
+E1: Set channel volume to 1
+F8: Begin loop and set loop counter to 2
+FC 2E A0: Odd loop break
+	y:x = $a02e: If loop counter is odd (second playthrough) end loop and go to $a02e
+FC 0A A0: End loop
+	y:x = $a00a: If loop counter is not 0 go to $a00a, else end loop
+	
+Triangle:
+F6 FF FF FF E4 BE: Set timbre and envelopes
+	C = $ff: As long as $80 is set the rest of the bits don't really matter
+	w:v = $ffff: No volume envelope. Triangle can't use one anyway.
+	q:p = $bee4: Set pitch envelope address to $bee4
+
+Loop Shenanigans
+
+Overly clever hackers may notice that the fact that the end loop command (as well as odd loop break) specifies an explicit address means the loop need not return to where it began; in fact it need not form a loop at all. Thus the end loop command is esentially an if-then-else statement: decrement the loop counter and if not 0 go to x, else continue; and these commands can be strung together to function like a switch-case structure. This can be abused for a number of purposes, to name a few:
+- Loops that repeat a different number of times depending on whether they're in the first or subsequent playthrough of the track. Here the loop simply needs to have different loop counter values set the first time it's run vs. when the track loops.
+- Subroutines. A non-looping block of music data can be reached from multiple locations with different loop counter values, and one or more end loop commands can be used to return to different locations depending on the value of the loop counter. Though note that using a subroutine in too many places will have a performance impact due to the multiple end loop commands needed.
+
+ENVELOPES
+
+Volume and pitch envelopes have almost identical structure and semantics: an array of byte-sized entries of the form Lv that apply a value v then wait for L frames till the next entry, terminated either by a 0 entry or a loop entry. The only difference is that pitch envelope values are signed and relative while volume values are not. Unlike FF1 and FF3, in FF2 envelopes are identified by address, not index; this makes it easy to add arbitrary new envelopes.
+
+Volume Enveloopes
+
+Volume Enveloope Format:
+00: End of envelope
+0o: Loop. Subtract o from current envelope offset in bytes.
+Lv: Set envelope volume to v and wait L frames
+
+Volume envelope volume values are independent of the channel volume, and the final volume written to the hardware is floor(channel volume * envelope volume / 15). In the event that a volume envelope does not reach 0 volume, the volume last written to the hardware will be left in place until the next envelope change or rest.
+
+It is interesting to note that while looping volume envelopes are supported, no volume envelopes in FF2 use this feature.
+
+For example:
+bd04 (37d14): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:2 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+
+This is a straightforward decay envelope that begins at max volume and fades out at a rate of 1 volume every 2 frames.
+
+beaf (37ebf): 11:1 12:1 13:1 14:1 15:1 14:1 13:1 12:1 11:1 10:1 9:1 8:1 7:1 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+
+A slightly more complicated envelope that has an attack from 11-15 at a rate of 1 volume/frame, a first decay from 15-6 at a rate of 1 volume/frame, and finally a second decay from 6-0 at 1 volume every 2 frames.
+
+Pitch Envelopes
+
+Pitch Envelope Format:
+00: End of envelope
+0o: Loop. Subtract o from current envelope offset in bytes.
+(LLLL nooo): Modify pitch period by n:o (in sign-magnitude format) and wait L frames; if n subtract o (increase pitch), else add o (decrease pitch).
+
+Pitch envelopes directly modify the current wave period and are period-relative, e.g. in a pitch slide (repeating pitch change in one direction) the pitch change will accelerate over time when period is decreasing (rising pitch) and decelerate when period is increasing (falling pitch).
+
+One quirk of the APU is that updates to the high byte of the period retrigger synthesis of the note that is currently playing, which can cause noticeable artifacts. To avoid this the pitch envelope is not allowed to modify the high period byte, and period values are clamped to their nearest $100 boundaries. This has two unexpected side effects.
+
+The direct and cumulative modification of the period has the side effect that the base pitch can be shifted due to clamping at the high/low points of the envelope. E.g. if a vibrato envelope has the repeating sequence +2, -2, -2, +2 (+/- 2) but the current period is $1ff and +2 would cause a boundary crossing, the result will be $1ff + 2 = $1ff, and then $1ff - 4 + 2 = $1fd, NOT $1ff; the center frequency has shifted.
+
+Worse is that pitch slides will abruptly stop at the nearest $100 boundary. Working around these jarring stops is left as an exercise to the composer.
+
+Examples
+
+bec7 (37ed7): +0:15 -1:4 +1:4 -2->1
+
+This is a vibrato envelope with a delay of 15 frames, a depth of 1 period unit, and a period of 8 frames (7.5 Hz).
+
+bee4 (37ef4): -1:4 +2:4 -2:4 +2:4 -2:4 +2:4 -3:4 +4:4 -4:4 -2->7
+
+This is a vibrato envelope with period of 8 (7.5 Hz) but a depth that grows from 1 to 8 over 28 frames (~0.5 sec).
+
+befb (37f0b): +1:1 -1->0
+
+A trivial falling pitch slide that increases period at a rate of 1/frame. As previously mentioned, the fall in pitch will decelerate over time; e.g. at A440 pitch will decrease at a rate of 6.8 cents/frame, while at A880 pitch will decrease at a rate of 3.4 cents/frame. Except for one little detail: the period register value for A440 is $fd, and A880 is $1fa, just short of a $100 boundary; thus in reality this envelope will have little effect on an A440 or A880 note.
+
+SOUND EFFECTS
+
+As with FF1, FF2 does not have a dedicated mechanism or format for playing sound effects, and sound effects are played ad hoc.
+
+ADDITIONAL TABLES
+
+All addresses are in memory, and all music data is in bank $d at address $8000. The file offset = addr + 0x2c010.
+
+Note/Rest Length Table in Ticks:
+0: Whole (96)
+1: Dotted half (72)
+2: Half (48)
+3: Dotted 4th (36)
+4: Triplet half (32)
+5: 4th (24)
+6: Dotted 8th (18)
+7: Triplet 4th (16)
+8: 8th (12)
+9: Dotted 16th (9)
+a: Triplet 8th (8)
+b: 16th (6)
+c: Triplet 16th (4)
+d: 32nd (3)
+e: Triplet 32nd (2)
+f: Triplet 64th (1)
+
+Track Table
+
+Table address: $9e0d ($35e1d)
+
+Track   Addr  Sq1A  Sq1FO  Sq2A  Sq2FO  TriA  TriFO
+ 0 (0)  9e4b: ffff         ffff         ffff
+ 1 (1)  9e51: 9e57 (35e67) 9f57 (35f67) ffff
+ 2 (2)  9f62: 9f68 (35f78) 9f7c (35f8c) ffff
+ 3 (3)  9f87: 9f8d (35f9d) 9fcc (35fdc) 9fe1 (35ff1)
+ 4 (4)  9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
+ 5 (5)  9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
+ 6 (6)  9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
+ 7 (7)  a167: a16d (3617d) a197 (361a7) a1b5 (361c5)
+ 8 (8)  a1c4: a1ca (361da) a1eb (361fb) ffff
+ 9 (9)  a20d: a213 (36223) a234 (36244) ffff
+10 (a)  a255: a25b (3626b) a279 (36289) a299 (362a9)
+11 (b)  a2a0: a2a6 (362b6) a303 (36313) a3e8 (363f8)
+12 (c)  a465: a46b (3647b) a4c9 (364d9) a564 (36574)
+13 (d)  a5eb: a5f1 (36601) a6a0 (366b0) a734 (36744)
+14 (e)  a7ba: a7c0 (367d0) a85d (3686d) a8da (368ea)
+15 (f)  a99b: a9a1 (369b1) aa9a (36aaa) aada (36aea)
+16 (10) ab0b: ab11 (36b21) ab9b (36bab) ac25 (36c35)
+17 (11) ac5a: ac60 (36c70) acc7 (36cd7) ad0b (36d1b)
+18 (12) ad5a: ad60 (36d70) ae5e (36e6e) af53 (36f63)
+19 (13) b030: b036 (37046) b1c6 (371d6) b3a7 (373b7)
+20 (14) b510: b516 (37526) b521 (37531) ffff
+21 (15) b52a: b530 (37540) b596 (375a6) b5f5 (37605)
+22 (16) b64a: b650 (37660) b678 (37688) b6c4 (376d4)
+23 (17) b6d5: b6db (376eb) b703 (37713) b70f (3771f)
+24 (18) b74d: b753 (37763) b772 (37782) b77e (3778e)
+25 (19) b785: b78b (3779b) b7b1 (377c1) b816 (37826)
+26 (1a) b826: b82c (3783c) b860 (37870) b874 (37884)
+27 (1b) b8a0: b8a6 (378b6) b8e0 (378f0) b93f (3794f)
+28 (1c) b980: b986 (37996) b9b0 (379c0) b9cc (379dc)
+29 (1d) b9e1: b9e7 (379f7) bb3d (37b4d) bc78 (37c88)
+30 (1e) bce2: bce8 (37cf8) ffff         ffff
+
+The code that accesses the track table:
+986E    LDA $9E0D,X              
+9871    STA $C8                  
+9873    LDA $9E0E,X              
+9876    STA $C9                  
+
+Volume Envelopes
+
+bd04 (37d14): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:2 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+bd15 (37d25): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:3 6:4 5:4 4:4 3:4 2:4 1:4 0:1
+bd26 (37d36): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:6 7:7 6:8 5:8 4:9 3:11 2:13 1:15 0:1
+bd37 (37d47): 15:2 13:2 11:2 9:2 7:2 5:5 4:9 3:11 2:13 1:15 0:1
+bd43 (37d53): 5:1 6:1 7:1 8:1 9:2 10:2 11:2 12:2 13:2 15:2 13:2 15:2 13:2 15:2 13:2 15:2 13:2 15:2 13:2 15:2 13:2 15:2 13:2 15:2 13:2 12:4 11:4 10:4 9:5 8:5 7:5 6:6 5:6 4:6 3:7 2:7 1:7 0:1
+bd6a (37d7a): 7:1 9:1 11:1 13:1 15:2 14:2 15:2 14:2 15:2 14:2 15:2 14:2 15:2 13:2 11:2 14:2 12:2 10:2 13:2 11:2 9:2 12:2 10:2 8:2 11:2 9:2 7:2 10:2 8:2 6:2 9:2 7:2 5:2 8:2 6:2 4:2 7:2 5:2 3:2 6:2 4:2 2:2 5:2 3:2 1:2 0:1
+bd99 (37da9): 6:1 15:1 8:1 15:1 10:1 15:1 11:1 15:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 15:1 13:1 14:1 12:1 11:3 9:3 7:3 5:3 3:3 1:3 0:1
+bdd2 (37de2): 15:1 6:1 8:1 9:1 10:1 11:1 12:1 13:1 14:1 15:2 14:2 13:2 14:2 15:2 14:2 13:2 14:2 15:2 14:2 13:2 14:2 15:2 14:2 13:2 14:2 15:2 14:2 13:2 14:2 15:2 14:2 13:2 14:2 15:2 14:2 13:2 14:2 15:2 14:2 11:3 9:3 7:3 5:3 3:3 1:3 0:1
+be66 (37e76): 6:1 3:1 6:1 8:1 10:1 12:1 14:1 15:2 13:1 14:1 12:1 15:3 13:1 14:1 12:1 15:15 15:12 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:2 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+be87 (37e97): 3:2 5:2 7:2 9:2 11:2 13:2 15:3 12:3 15:3 12:3 15:3 12:3 15:3 11:3 14:3 10:3 13:3 9:3 12:3 8:3 11:3 7:3 10:3 6:3 9:3 5:3 8:3 4:3 7:3 3:3 6:3 2:3 5:3 1:3 4:3 3:3 2:3 1:3 0:1
+beaf (37ebf): 11:1 12:1 13:1 14:1 15:1 14:1 13:1 12:1 11:1 10:1 9:1 8:1 7:1 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+
+Pitch Envelopes
+
+bec4 (37ed4): +0:4 +1:15
+bec7 (37ed7): +0:15 -1:4 +1:4 -2->1
+becb (37edb): +0:7 -1:3 +2:3 -2:3 +2:3 -2:3 +2:3 -3:3 +4:3 -4:3 -2->8
+bedd (37eed): -1:4 +1:4 -2->0
+bee0 (37ef0): -1:15 -1:4 +1:4 -2->1
+bee4 (37ef4): -1:4 +2:4 -2:4 +2:4 -2:4 +2:4 -3:4 +4:4 -4:4 -2->7
+bef9 (37f09): -2:15
+befb (37f0b): +1:1 -1->0
+befd (37f0d): +3:1 +1:1 -1->1
