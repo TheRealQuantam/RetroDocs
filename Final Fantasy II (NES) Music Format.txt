@@ -5,7 +5,7 @@ By Justin Olbrantz (Quantam)
 
 The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
 
-The Final Fantasy II sound engine, just like the game itself, sits directly between Final Fnatasy and Final Fantasy III, showing a clear intermediate step between predecesor and succesor. Although Toshiaki Imai's Final Fantasy engine and the subsequent engines by Hiroshi Nakamura all appear to be distinct codebases, the continuity of features and music encoding is unmistakable, and for the most part music composed in earlier engines can be converted to work on later engines.
+The Final Fantasy II sound engine, just like the game itself, sits directly between Final Fantasy and Final Fantasy III, showing a clear intermediate step between predecessor and successor. Although Toshiaki Imai's Final Fantasy engine and the subsequent engines by Hiroshi Nakamura all appear to be distinct codebases, the continuity of features and music encoding is unmistakable, and for the most part music composed in earlier engines can be converted to work on later engines.
 
 The FF2 engine is not entirely abstracted from the NES' Audio Processing Unit hardware. In particular, the FF2 engine allows partial direct access to the ctrl 1 ($4000, $4004, etc.) register. The details of this will be discussed under the corresponding command. For further information see a proper APU programming reference such as https://www.nesdev.org/wiki/APU_registers
 
@@ -114,7 +114,7 @@ F6 FF FF FF E4 BE: Set timbre and envelopes
 
 Loop Shenanigans
 
-Overly clever hackers may notice that the fact that the end loop command (as well as odd loop break) specifies an explicit address means the loop need not return to where it began; in fact it need not form a loop at all. Thus the end loop command is esentially an if-then-else statement: decrement the loop counter and if not 0 go to x, else continue; and these commands can be strung together to function like a switch-case structure. This can be abused for a number of purposes, to name a few:
+Overly clever hackers may notice that the fact that the end loop command (as well as odd loop break) specifies an explicit address means the loop need not return to where it began; in fact it need not form a loop at all. Thus the end loop command is essentially an if-then-else statement: decrement the loop counter and if not 0 go to x, else continue; and these commands can be strung together to function like a switch-case structure. This can be abused for a number of purposes, to name a few:
 - Loops that repeat a different number of times depending on whether they're in the first or subsequent playthrough of the track. Here the loop simply needs to have different loop counter values set the first time it's run vs. when the track loops.
 - Subroutines. A non-looping block of music data can be reached from multiple locations with different loop counter values, and one or more end loop commands can be used to return to different locations depending on the value of the loop counter. Though note that using a subroutine in too many places will have a performance impact due to the multiple end loop commands needed.
 
@@ -122,9 +122,9 @@ ENVELOPES
 
 Volume and pitch envelopes have almost identical structure and semantics: an array of byte-sized entries of the form Lv that apply a value v then wait for L frames till the next entry, terminated either by a 0 entry or a loop entry. The only difference is that pitch envelope values are signed and relative while volume values are not. Unlike FF1 and FF3, in FF2 envelopes are identified by address, not index; this makes it easy to add arbitrary new envelopes.
 
-Volume Enveloopes
+Volume Envelopes
 
-Volume Enveloope Format:
+Volume Envelope Format:
 00: End of envelope
 0o: Loop. Subtract o from current envelope offset in bytes.
 Lv: Set envelope volume to v and wait L frames
