@@ -7,7 +7,7 @@ The permanent home of this specification and others, with the latest updates, is
 
 The Final Fantasy II sound engine, just like the game itself, sits directly between Final Fnatasy and Final Fantasy III, showing a clear intermediate step between predecesor and succesor. Although Toshiaki Imai's Final Fantasy engine and the subsequent engines by Hiroshi Nakamura all appear to be distinct codebases, the continuity of features and music encoding is unmistakable, and for the most part music composed in earlier engines can be converted to work on later engines.
 
-The FF2 engine is not entirely abstracted from the NES' Audio Processing Unit hardware. In particular, the FF3 engine allows partial direct access to the ctrl 1 ($4000, $4004, etc.) register. The details of this will be discussed under the corresponding command. For further information see a proper APU programming reference such as https://www.nesdev.org/wiki/APU_registers
+The FF2 engine is not entirely abstracted from the NES' Audio Processing Unit hardware. In particular, the FF2 engine allows partial direct access to the ctrl 1 ($4000, $4004, etc.) register. The details of this will be discussed under the corresponding command. For further information see a proper APU programming reference such as https://www.nesdev.org/wiki/APU_registers
 
 Basic Features:
 - Compact single-byte notes and rests
