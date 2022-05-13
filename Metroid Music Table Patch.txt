@@ -1,0 +1,59 @@
+METROID MUSIC TABLE PATCH
+v0.1
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this document and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+The Metroid music engine hard-codes track square channel timbres (especially duty cycle) in an extremely obtuse and romhacking-hostile way. This simple patch replaces that method with a simple table lookup that makes music modification much easier. But first, a few preliminaries.
+
+The Metroid cartridge is organized such that each zone is assigned a ROM bank which is loaded at $8000-$bfff, and all its data and code (including music) are placed in that bank. As music code and some data structures are present in all zones, they are duplicated in all banks, and any changes will also need to be made potentially across all banks.
+
+The $8000-$bfff banks used for different parts of the game:
+	0: Title screen and ending
+	1: Brinstar
+	2: Norfair
+	3: Tourian
+	4: Kraid's lair
+	5: Ridley's lair
+	
+The file offset = bank * $4000 + address - $7ff0
+
+The tracks are as follows:
+
+ #     Name           Bks  Sq1T  Sq2T
+ 0 (0) Ridley's Lair @4/5: b3:1  b3:1
+ 1 (1) Tourian       @all: 92:0  96:0
+ 2 (2) Item Room     @all: 92:0  96:0
+ 3 (3) Kraid's Lair  @4/5: 92:0  96:0
+ 4 (4) Norfair       @  2: 34:4  34:4
+ 5 (5) Escape        @  3: f4:2  f4:2
+ 6 (6) Mother Brain  @  3: 92:0  96:0
+ 7 (7) Brinstar      @  1: 34:2  34:3
+ 8 (8) Samus Appears @all: 34:2  34:0
+ 9 (9) Item Fanfare  @all: b6:1  f6:0
+10 (a) Ending        @  0: f5:2  f6:1
+11 (b) Title Theme   @  0: b6:2  f6:5
+
+Table legend:
+	Bks: Bank(s) the track exists in
+	Sq1T: Square 1 channel timbre settings. The left side is the ctrl 1 value, the right side is the envelope number if any.
+	Sq2T: Square 2 channel timbre settings.
+	
+The ctrl 1 values have the format  ddLV vvvv:
+	d: Duty cycle. 0: 12.5%, 1: 25%, 2: 50%, 3: 75%
+	L: Disable length counter and play note forever. This is mostly irrelevant since notes in Metroid are set to play for 127 frames, which is longer than the longest length in the length table.
+	V: Specifies that v is the volume and not decay rate. Always set.
+	v: The volume
+	
+Finally, the table implemented by this patch (across banks):
+
+bc96 struct[$c]: Square wave channel ctrl 1 values
+	+0: Square wave 1 channel ctrl 1 value
+	+1: Square wave 2 channel ctrl 1 value
+	
+E.g. the table from the patch, which does not change any track timbres:
+B3 B3 92 96 92 96 92 96 34 34 F4 F4 92 96 34 34 34 34 B6 F6 F5 F6 B6 F6
+B3 B3: Track 0 both channel ctrl 1 values are $b3
+92 96 x3: Track 1-3 have square 1 value $92, square 2 value $96
+etc.
