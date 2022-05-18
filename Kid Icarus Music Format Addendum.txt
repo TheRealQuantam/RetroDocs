@@ -1,0 +1,149 @@
+KID ICARUS MUSIC FORMAT ADDENDUM
+v0.1
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+This document is an addendum to the Metroid Music Format specification. Both games use the same engine and function identically, but many data tables differ, including note length (tempo) tables and key tables. This document provides the tables and addresses of data analogous to those in the Metroid specification, to be used for the same purposes.
+
+The biggest difference between Metroid and Kid Icarus is that Kid Icarus keeps all its music code and data in bank 4, while Metroid duplicates it across many banks. As such, to convert addresses in this document to file offsets: file offset = address + 0x8010.
+
+ab86 byte[$24]: Master note length table in frames
+
+     0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f
+ 0:  3,  6, 12, 24, 48, 18, 36,  9,  8,  4,  1, 16,  4,  8, 16, 32,
+10: 64, 24, 48, 12, 11,  5,  2,  1,  6, 12, 24, 48, 96, 36, 72, 18,
+20: 16,  8,  3, 16,  2
+
+Note Length Tables by Tempo:
+               0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f
+ 0 (300 BPM):  3,  6, 12, 24, 48, 18, 36,  9,  8,  4,  1, 16,  4,  8, 16, 32,
+ c (225 BPM):  4,  8, 16, 32, 64, 24, 48, 12, 11,  5,  2,  1,  6, 12, 24, 48,
+18 (150 BPM):  6, 12, 24, 48, 96, 36, 72, 18, 16,  8,  3, 16,  2
+
+Standard Note Length Codes:
+
+          Whole  Half   4th   8th  16th
+Normal:       4    3      2     1     0
+Dotted:            6      5     7
+Triplet:                  8*
+
+* Quarter note triplet is rounded at 225 BPM and will not line up correctly with normal or dotted notes.
+
+Code to load the current note length from the track window:
+AA30    LDA $AB86,Y              
+
+Code to set the triangle auto-release length to 15 frames ($3c quarter-frames) when F:L is 0:
+AAD2    CMP #$3C                 
+AAD4    BCC $AAD8                
+AAD6    LDA #$3C                 
+AAD8    STA $032A                
+
+aafa big-endian word[$46]: Key pitch table, in period register units. For square wave channels, period = 1789773 / frequency / 16 - 1 (triangle channel is 1 octave lower). Entry 1 must be 0 as it is rest. Note that unlike the Metroid key table, the Kid Icarus key table nominally starts at A#1, and C keys are codes 12x + 2.
+
+Oct   C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at Bx
+1:                                        0*         0.96 cents
+2:    2   3   4   5   6   7   8   9   a   b   c   d  1.91 cents
+3:    e   f  10  11  12  13  14  15  16  17  18  19  3.83 cents
+4:   1a  1b  1c  1d  1e  1f  20  21  22  23  24  25  7.66 cents
+5:   26  27  28  29  2a  2b  2c  2d  2e  2f  30  31  15.4 cents
+6:   32  33  34  35  36  37  38  39  3a  3b  3c  3d  30.8 cents
+7:   3e  3f  40  41  42  43  44  45
+
+Code to load the period for a key:
+AA49    LDA $AAFB,Y              
+AA4C    BEQ $AA59                
+AA4E    STA $0300,X              
+AA51    LDA $AAFA,Y              
+AA54    ORA #$08                 
+AA56    STA $0301,X              
+
+a100 struct[3]: Noise presets table. Data actually starts at offset 1 ($a101). The first entry must be silence (rest).
+	+0 byte: Ctrl 1 value
+	+1 word: Period regs value
+	
+Noise Key Table:
+4: Snare tap
+7: Snare full stroke
+
+Note that although the presets are imitating the same instruments as in Metroid, the actual data (and thus sound) is slightly different.
+
+Code to play a noise preset:
+AAE5    LDA $A100,Y              
+AAE8    STA NoiseVolume_400C     
+AAEB    LDA $A101,Y              
+AAEE    STA NoisePeriod_400E     
+AAF1    LDA $A102,Y              
+AAF4    STA NoiseLength_400F     
+
+abab byte[$c]: Track header offset table. Offsets are relative to the track header block.
+ac88 structs: Track header block base
+
+ #     Name           Off   TO  Lp TriL  Sq1T  Sq2T  Sq1A  Sq2A  TriA  NoiA
+ 0 (0) The Reaper     +41:  18  ff  0:0  f5:2  f6:2  ad24  ad3e  ad57  ad6b
+ 1 (1) Fortress       +27:   c  ff  0:a  93:0  96:0  b309  b30b  b372  b379
+ 2 (2) Boss Battle     +0:  18  ff  f:0  b4:1  b4:2  ad7c  ad70  ad94     0
+ 3 (3) Medusa         +1a:  18  ff  f:0  93:0  96:0  b4e7  b4e9  b504  b51c
+ 4 (4) Sky Palace     +34:  18  ff  0:0  b3:3  b1:1  b3e2  b45e  b383  b4dc
+ 5 (5) Sky World       +d:   c  ff  0:0  b4:2  b4:3  b210  b170  b28b  b302
+ 6 (6) Overworld      +8f:   0  ff  f:0  b4:3  b4:3  b06e  af9c  b0e3  b158
+ 7 (7) Underworld     +82:  18  ff  0:0  b4:2  b4:3  ae7f  adfb  af12  af80
+ 8 (8) Death          +68:  18   0  0:0  f5:1  f6:1  adc7  add8  ade8     0
+ 9 (9) Stage Complete +75:  18   0  f:0  f5:1  f6:1  adaa  adbc  adb6     0
+10 (a) Ending         +4e:  18   0  f:0  b4:1  b4:1  b798  b8a0  b9ca  bad5
+11 (b) Title Theme    +5b:  18   0  f:0  f6:3  f8:3  b523  b621  b6f0  b77e
+
+Table legend:
+	Off: Offset of the track header in the track header block
+	TO: Note length table base offset (tempo)
+	Lp: Loop setting - 0 if non-looping, non-0 if looping
+	TriL: Triangle auto-release control (F:L)
+	Sq1T: Square 1 channel timbre settings. The left side is the ctrl 1 value, the right side is the envelope number if any.
+	Sq2T: Square 2 channel timbre settings.
+	Sq1A/Sq2A/TriA/NoiA: Addresses of channel data if any
+	
+
+Code to load the address of a track header:
+A89F    LDA $ABAB,Y              
+A8A2    TAY                      
+A8A3    LDX #$00                 
+A8A5    LDA $AC88,Y              
+A8A8    STA $032B,X              
+A8AB    INY                      
+A8AC    INX                      
+A8AD    TXA                      
+A8AE    CMP #$0D                 
+A8B0    BNE $A8A5                           
+
+ac64 word[3]: Envelope address table
+
+1 @ac6a (12c7a): 35787654 ff
+2 @ac73 (12c83): 1122334455 ff
+3 @ac7e (12c8e): 245678765 ff
+
+abd7 word[8]: Jump table for tracks 0-7
+abb7 word[4]: Jump table for tracks 8-$b
+
+Possible jump table targets:
+
+Table    Actual  S1    S2
+ac27:    ac3f    b4    b4
+ac2a:    ac4c    f6    f8
+ac2d:    ac5e    93    96
+ac30:    ac52    f5    f6
+ac33:    ac58    b3    b1
+ac36:    ac3f    b4    b4 <- duplicate of ac27
+ac39:    ac52    f5    f6 <- duplicates of ac30
+ac3c:    ac52    f5    f6 <-
+
+Create ctrl 1 table at $ac4c: f5 f6 93 96 b4 b4 93 96 b3 b1 b4 b4 b4 b4 b4 b4 f5 f6 f5 f6 b4 b4 f6 f8
+
+Code to make the game use a lookup table for ctrl 1 values:
+AC27    LDA $0350                
+AC2A    ASL A                    
+AC2B    TAY                      
+AC2C    LDX $AC4C,Y              
+AC2F    LDA $AC4D,Y              
+AC32    TAY                      
+AC33    JMP $AC43                

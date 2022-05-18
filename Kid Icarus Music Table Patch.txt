@@ -1,0 +1,49 @@
+KID ICARUS MUSIC TABLE PATCH
+v0.1
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this document and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+The Metroid music engine used by Kid Icarus hard-codes track square channel timbres (especially duty cycle) in an extremely obtuse and romhacking-hostile way. This simple patch replaces that method with a simple table lookup that makes music modification much easier. But first, a few preliminaries.
+
+Unlike Metroid, Kid Icarus keeps all its music code and data in bank 4. Thus the file offset = address + 0x8010.
+
+The tracks are as follows:
+
+ #     Name           Off   Sq1T  Sq2T
+ 0 (0) The Reaper     +41:  f5:2  f6:2
+ 1 (1) Fortress       +27:  93:0  96:0
+ 2 (2) Boss Battle     +0:  b4:1  b4:2
+ 3 (3) Medusa         +1a:  93:0  96:0
+ 4 (4) Sky Palace     +34:  b3:3  b1:1
+ 5 (5) Sky World       +d:  b4:2  b4:3
+ 6 (6) Overworld      +8f:  b4:3  b4:3
+ 7 (7) Underworld     +82:  b4:2  b4:3
+ 8 (8) Death          +68:  f5:1  f6:1
+ 9 (9) Stage Complete +75:  f5:1  f6:1
+10 (a) Ending         +4e:  b4:1  b4:1
+11 (b) Title Theme    +5b:  f6:3  f8:3
+
+Table legend:
+	Sq1T: Square 1 channel timbre settings. The left side is the ctrl 1 value, the right side is the envelope number if any.
+	Sq2T: Square 2 channel timbre settings.
+	
+The ctrl 1 values have the format  ddLV vvvv:
+	d: Duty cycle. 0: 12.5%, 1: 25%, 2: 50%, 3: 75%
+	L: Disable length counter and play note forever. This is mostly irrelevant since notes in Metroid are set to play for 127 frames, which is longer than the longest length in the length table.
+	V: Specifies that v is the volume and not decay rate. Always set.
+	v: The volume
+	
+Finally, the table implemented by this patch:
+
+ac4c struct[$c]: Square wave channel ctrl 1 values
+	+0: Square wave 1 channel ctrl 1 value
+	+1: Square wave 2 channel ctrl 1 value
+	
+E.g. the table from the patch, which does not change any track timbres:
+f5 f6 93 96 b4 b4 93 96 b3 b1 b4 b4 b4 b4 b4 b4 f5 f6 f5 f6 b4 b4 f6 f8
+f5 f6: Track 0 has square 1 value $f5, square 2 value $f6
+93 96: Track 1 has square 1 value $93, square 2 value $96
+b4 b4: Track 2 has the value $b4 for both square channels
+etc.
