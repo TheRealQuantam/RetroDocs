@@ -1,0 +1,282 @@
+TETRIS (NES) MUSIC FORMAT ADDENDUM
+v0.1
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+This document is an addendum to the Mother Music Format specification. Both games use the same engine and function identically, but many data tables differ, including note length (tempo) tables and key tables. This document provides the tables and addresses of data analogous to those in the Mother specification, to be used for the same purposes.
+
+Bank configuration:
+$c000-$ffff: Bank 1
+
+1:ebaf byte[$74]: Note length table in frames
+
+           16   8   4   2   1  4D  2D  8D  4T  8T  32
+0 (300):    3   6  12  24  48  18  36   9   8   4   2*  1
+c (225):    4   8  16  32  64  24  48  12  10*  5*  2   1
+18 (180):   5  10  20  40  80  30  60  15  13*  6*  2*  1
+24 (150):   6  12  24  48  96  36  72  18  16   8   3   1   4   2   0 144
+34 (129):   7  14  28  56 112  42  84  21  18*  9*  3*  1   2
+41 (113):   8  16  32  64 128  48  96  24  21* 10*  4   1   2 192
+4f (100):   9  18  36  72 144  54 108  27  24    *   *
+58 (90):   10  20  40  80 160 108 120  30  26* 13*  5   1   2  23
+66 (82):   11  22  44  88 176  66 132  33  29* 14*  5*  1   2  23
+
+Tetris has a very robust set of tempos even though only a few are actually used. It is identical to Mother's table except for the addition of 300 BPM tempo; even the missing lengths for 100 BPM are the same.
+
+          Whole  Half   4th   8th  16th  32nd
+Normal:       4    3      2     1     0     a*
+Dotted:            6      5     7
+Triplet:                  8*    9*
+
+Code to load the current length for notes:
+E907    LDA $EBAF,Y              
+
+Code to set the triangle auto-release length to 15 frames ($3c quarter-frames) when F:L is 0:
+E9D0    CMP #$3C                 
+E9D2    BCC $E9D6                
+E9D4    LDA #$3C                 
+
+1:eb13 big-endian word[$4b]: Key pitch table, in period register units. For square wave channels, period = 1789773 / frequency / 16 - 1 (triangle channel is 1 octave lower). Entry 1 must be 0 as it is rest.
+
+Oct  C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at B
+1:                                       0          0.96 cents
+2:   2   3   4   5   6   7   8   9   a   b   c   d  1.91 cents
+3:   e   f  10  11  12  13  14  15  16  17  18  19  3.83 cents
+4:  1a  1b  1c  1d  1e  1f  20  21  22  23  24  25  7.69 cents
+5:  26  27  28  29  2a  2b  2c  2d  2e  2f  30  31  15.49 cents
+6:  32  33  34  35  36  37  38  39  3a  3b  3c  3d  31.41 cents
+7:  3e  3f  40  41  42  43  45  46  47  48      49  64.58 cents
+8:  4a
+
+Code to load the period for a melodic key:
+E923    LDA $EB14,Y              
+...
+E93E    LDA $EB14,Y              
+E941    STA $0680,X              
+E944    LDA $EB13,Y              
+E947    ORA #$08                 
+E949    STA $0681,X              
+
+1:e5ab byte[$d]: Noise preset table. Actually begins at offset 1 ($e5ac). Valid presets are 4, 7, and $a.
+
+Code to play a noise preset:
+E9F0    LDA $E5AB,Y              
+E9F3    STA NoiseVolume_400C     
+E9F6    LDA $E5AC,Y              
+E9F9    STA NoisePeriod_400E     
+E9FC    LDA $E5AD,Y              
+E9FF    STA NoiseLength_400F     
+
+Tetris supports DMC and appears to have 2 presets, however this may be a coincidence as the music never uses them and the code to play DMC is identical to that of Mother even though the data at the specified addresses is completely different. The DMC addresses may in fact be pointing to random data that just happens to both sound vaguely kick drum-like.
+
+EA03    TYA                      
+EA04    AND #$C0                 
+EA06    CMP #$40                 
+EA08    BEQ $EA0F                
+EA0A    CMP #$80                 
+EA0C    BEQ $EA19                
+EA0E    RTS                      
+EA0F    LDA #$0E                 
+EA11    STA $E1                  
+EA13    LDA #$07                 
+EA15    LDY #$00                 
+EA17    BEQ $EA21                
+EA19    LDA #$0E                 
+EA1B    STA $E1                  
+EA1D    LDA #$0F                 
+EA1F    LDY #$02                 
+EA21    STA DmcLength_4013       
+EA24    STY DmcAddress_4012      
+EA27    LDA $06F7                
+EA2A    BNE $EA40                
+EA2C    LDA $E1                  
+EA2E    STA DmcFreq_4010         
+EA31    LDA #$0F                 
+EA33    STA ApuStatus_4015       
+EA36    LDA #$00                 
+EA38    STA DmcCounter_4011      
+EA3B    LDA #$1F                 
+EA3D    STA ApuStatus_4015       
+EA40    RTS                      
+
+1:ea4a word[$16]: Volume envelope table.  Indices are 0-based, unlike in set timbre commands.
+
+Envelope  1 @ea76: 4689877666554433222111 f0
+Envelope  2 @ea82: 8655444431111111 f0
+Envelope  3 @ea8b: 5443332211 f0
+Envelope  4 @ea91: 2345776655444444 ff
+Envelope  5 @ea9a: 32222222222222 ff
+Envelope  6 @eaa2: 9981 ff
+Envelope  7 @eaa5: 5871 ff
+Envelope  8 @eaa8: e79981 ff
+Envelope  9 @eaac: a8665554434332222221111111 f0
+Envelope  a @eaba: 976544333333222211111111 f0
+Envelope  b @eac7: 654444332222111111111111 f0
+Envelope  c @ead4: 443322221111111111 f0
+Envelope  d @eade: 222211111111111111 f0
+Envelope  e @eae8: 976532432111322111 ff
+Envelope  f @eaf2: d8765432 ff
+Envelope 10 @eaf7: b8765321 ff
+Envelope 11 @eafc: 85432111 ff
+Envelope 12 @eb01: 532211 ff
+Envelope 13 @eb05: eb975321 ff
+Envelope 14 @eb0a: a991 f0
+Envelope 15 @eb0d: 8551 f0
+Envelope 16 @eb10: 6331 f0
+
+Code to load an envelope address:
+E785    LDA $EA4A,Y              
+E788    STA $E2                  
+E78A    LDA $EA4B,Y              
+E78D    STA $E3                  
+
+Tetris has the same set of pitch envelopes as Mother. For completeness here is the code:
+E5FA    LDA $E2                  
+E5FC    CMP #$31                 
+E5FE    BNE $E602                
+E600    LDA #$27                 
+E602    TAY                      
+E603    LDA $E689,Y              
+E606    PHA                      
+E607    LDA $06C3,X              
+E60A    CMP #$46                 
+E60C    BNE $E613                
+E60E    PLA                      
+E60F    LDA #$00                 
+E611    BEQ $E671                
+E613    PLA                      
+E614    JMP $E671                
+E617    LDA $E2                  
+E619    TAY                      
+E61A    CMP #$10                 
+E61C    BCS $E624                
+E61E    LDA $E6C0,Y              
+E621    JMP $E677                
+E624    LDA #$F6                 
+E626    BNE $E677                
+E628    LDA $06C3,X              
+E62B    CMP #$4C                 
+E62D    BCC $E633                
+E62F    LDA #$FE                 
+E631    BNE $E677                
+E633    LDA #$FE                 
+E635    BNE $E677                
+...
+E637    LDA $06D1,X <- starts here             
+E63A    STA $E2                  
+E63C    LDA $E0                  
+E63E    CMP #$20                 
+E640    BEQ $E656                
+E642    CMP #$A0                 
+E644    BEQ $E665                
+E646    CMP #$60                 
+E648    BEQ $E628                
+E64A    CMP #$40                 
+E64C    BEQ $E617                
+E64E    CMP #$80                 
+E650    BEQ $E5FA                
+E652    CMP #$C0                 
+E654    BEQ $E5FA                
+E656    LDA $E2                  
+E658    CMP #$0A                 
+E65A    BNE $E65E                
+E65C    LDA #$00                 
+E65E    TAY                      
+E65F    LDA $E6B6,Y              
+E662    JMP $E671                
+E665    LDA $E2                  
+E667    CMP #$2B                 
+E669    BNE $E66D                
+E66B    LDA #$21                 
+E66D    TAY                      
+E66E    LDA $E695,Y              
+E671    PHA                      
+E672    TYA                      
+E673    STA $06D1,X              
+E676    PLA                      
+E677    PHA                      
+E678    LDA $06C8,X              
+E67B    BNE $E687                
+E67D    PLA                      
+E67E    CLC                      
+E67F    ADC $E1                  
+E681    LDY $EE                  
+E683    STA Sq0Timer_4002,Y      
+E686    RTS                      
+
+1:ec23 byte[$b]: Track header offset table. Indices are actually 0-based, unlike the numbers given.
+1:ec2d struct[$b]: Track header block
+
+Track 1 is hypothesized to be an unused title theme, and is used nowhere else in the game.
+
+ 1 Unused @ec2d:  +10  +24  ecf1  ecf5  ecf7  ecf9
+  Square 1 @ecf1: ecff 0000
+  Square 2 @ecf5: ed6f
+  Triangle @ecf7: ede2
+  Noise    @ecf9: ee6f
+
+ 2 Success @ec37:   -4   +0  ec91  ec95  ec97  ec99
+  Square 1 @ec91: ec9b 0000
+  Square 2 @ec95: ecc7
+  Triangle @ec97: ecb1
+  Noise    @ec99: ecdd
+
+ 3 Music 1 @ec41:   -2  +24  eebf  eec9  eed3  eedd
+  Square 1 @eebf: | eee3 f0f0 f1de
+  Square 2 @eec9: | efb1 f147 f1f7
+  Triangle @eed3: | f04f f196 f242
+  Noise    @eedd: | f258
+
+ 4 Music 2 @ec4b:   -4  +24  f5c2  f5d0  f5de  f5ec
+  Square 1 @f5c2: | f5f8 f66a f686 f686 f6f2
+  Square 2 @f5d0: | f5f2 f667 f6ac f6ac f795
+  Triangle @f5de: | f606 f678 f6d2 f6d2 f833
+  Noise    @f5ec: | f614
+
+ 5 Music 3 @ec55:   -2  +24  f2b1  f2b9  f2bf  ffff
+  Square 1 @f2b1: f2cb | f2d4
+  Square 2 @f2b9: | f2d1
+  Triangle @f2bf: | f34d
+
+ 6 Fast Music 1 @ec5f:   -2   +0  eebf  eec9  eed3  eedd
+  Square 1 @eebf: | eee3 f0f0 f1de
+  Square 2 @eec9: | efb1 f147 f1f7
+  Triangle @eed3: | f04f f196 f242
+  Noise    @eedd: | f258
+
+ 7 Fast Music 2 @ec69:   -4   +c  f5c2  f5d0  f5de  f5ec
+  Square 1 @f5c2: | f5f8 f66a f686 f686 f6f2
+  Square 2 @f5d0: | f5f2 f667 f6ac f6ac f795
+  Triangle @f5de: | f606 f678 f6d2 f6d2 f833
+  Noise    @f5ec: | f614
+
+ 8 Fast Music 3 @ec73:   -2   +c  f2b1  f2b9  f2bf  ffff
+  Square 1 @f2b1: f2cb | f2d4
+  Square 2 @f2b9: | f2d1
+  Triangle @f2bf: | f34d
+
+ 9 High Score @ec7d:   +0  +18  f3a4  f3aa  f3b0  f3b6
+  Square 1 @f3a4: | f3bc
+  Square 2 @f3aa: | f458
+  Triangle @f3b0: | f530
+  Noise    @f3b6: | f57f
+
+ a Victory @ec87:  -16  +24  f89e  f8aa  f8b6  f8c2
+  Square 1 @f89e: | f8f6 f96d f8f6 f9b7
+  Square 2 @f8aa: | f8ce f947 f8ce f991
+  Triangle @f8b6: | f90b f97f f90b f9d2
+  Noise    @f8c2: | f920 f920 f920 f930
+
+Code to load a track header:
+E6E3    LDA $EC23,Y              
+E6E6    TAY                      
+E6E7    LDX #$00                 
+E6E9    LDA $EC2D,Y              
+E6EC    STA $0690,X              
+E6EF    INY                      
+E6F0    INX                      
+E6F1    TXA                      
+E6F2    CMP #$0A                 
+E6F4    BNE $E6E9                
