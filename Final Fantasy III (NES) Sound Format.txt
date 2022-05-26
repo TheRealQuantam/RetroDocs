@@ -1,5 +1,5 @@
 FINAL FANTASY III (NES) SOUND ENGINE FORMAT
-v0.2
+v0.3
 
 By Justin Olbrantz (Quantam)
 
@@ -12,7 +12,7 @@ The FF3 engine is not entirely abstracted from the NES' Audio Processing Unit ha
 Basic Features:
 - Compact single-byte notes and rests
 + Staff notation style divisive rhythm system
-	- 6-octave chromatic scale from C2 (65.4 Hz) to B7 (7457 Hz) for square wave (triangle is one octave lower)
+	- 6-octave chromatic scale from C2 (65.4 Hz) to B7 (7457 Hz) for square wave (triangle is 1 octave lower)
 	- 16 note lengths from whole notes through 64th notes with dots and triplets for some lengths
 	- Length tie to create arbitrary lengths
 	- High-precision tempo from 1 to 255 BPM
@@ -53,14 +53,18 @@ Some general notes in interpreting this specification:
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
 - Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
-- To convert addresses to file offsets:
-	For addresses $8000-$9fff: file offset = addr + $64010
-	For addresses $a000-$bfff: file offset = bank * 0x2000 + addr - $9ff0
+- A wave's "period" is inversely proportionate to its frequency; in the NES the square wave channel's period = 1789773/16 / frequency (triangle channel is 1 octave lower for the same period), and the value actually written to the hardware is 1 less than this. Here "pitch" is used as proportionate to key number, is what humans perceive, and frequency doubles (period halves) with each pitch increase of 1 octave. As such "linear period", "linear frequency", and "linear pitch" are all very different things, and linear pitch is what sounds linear to the ear.
 
 MUSIC FORMAT
 
+FF3's sound system stores all its code, global data, and sound effects in bank $36 in the $8000-$9fff region. Music data as well as track tables are distributed across multiple banks that are mapped to $a000-$bfff as necessary.
+
+To convert addresses to file offsets:
+	For addresses $8000-$9fff: file offset = addr + $64010
+	For addresses $a000-$bfff: file offset = bank * $2000 + addr - $9ff0
+	
 Music Header Structure:
-+0 word[5]: Channel data addresses in order of square 1, square 2, triangle, noise, kick drum.
++0 word[5]: Channel data addresses in order of square 1, square 2, triangle, noise, kick drum, or $ffff if none.
 
 Channel Data Format
 
@@ -114,12 +118,12 @@ f5-f7 vv pp: Set timbre and envelopes. By default no envelopes are used:
 	Triangle: Set pitch envelope number to p ($ff if none).
 	Noise: Set volume envelope number to v ($ff if none) and pitch envelope number to p ($ff if none).
 	Kick drum: No effect.
-f8 eppp nsss: Set pitch slide register for square wave channels (4001, 4005, etc.). Has no effect on other channels. Defaults to pitch slide disabled.
+f8 eppp nsss: Set pitch slide register for square wave channels ($4001, $4005, etc.). Has no effect on other channels. Defaults to pitch slide disabled.
 	e: Enable pitch slide
 	p: Pitch slide period. Pitch is modified every p+1 half-frames.
 	n: Negative flag. If set, the square wave period is reduced (rising pitch), else the period is increased (falling pitch).
 	s: Pitch slide amount. The amount of change to the period is relative to the current period, resulting in linear pitch slides according to the following table (note that it will be slightly detuned because of how the period registers works):
-		0: 100% change: if n silences channel after 1 period, else decreases pitch by 1 octaves/period
+		0: 100% change: if n silences channel after 1 period, else decreases pitch by 1 octave/period
 		1: 50% change: if n +1 octave/period, else -7.02 semitones/period
 		2: 25% change: if n +4.98 semitones/period, else -3.86 semitones/period
 		3: 12.5% change: if n +2.31 semitones/period, else -2.04 semitones/period
@@ -133,10 +137,10 @@ f8 eppp nsss: Set pitch slide register for square wave channels (4001, 4005, etc
 f9: Closed hihat preset for noise channel. Set octave to 4, volume envelope number to 0, and channel volume to 8
 fa: Snare drum preset for noise channel. Set octave to 5, volume envelope number to 1, and channel volume to 15
 fb nn: Begin loop and set to play n > 0 times. May have 2 levels of loops.
-fc xx yy: End loop. Decrement loop counter and if not 0 go to y:x, else end loop and continue.
+fc xx yy: End loop. Decrement inner loop counter and if not 0 go to y:x, else end inner loop and continue.
 fd xx yy: Odd loop break. If loop counter is odd (1, 3, etc.) end inner loop and go to y:x, else continue.
 fe xx yy: Go to y:x
-ff: End of track
+ff: End of channel. Stop and silence the channel but other channels will continue. When all channels have ended playback is stopped.
 
 Examples
 
@@ -169,7 +173,7 @@ F9: Set closed hihat preset
 0B: Play note
 	k = 0: Noise value 4 (all keys are the same with this preset)
 	L = $b: 16th note
-FA: Snare drum preset
+FA: Set snare drum preset
 08: Play note
 	k = 0: Noise value $b (with this preset)
 	L = 8: 8th note
@@ -192,17 +196,31 @@ Pitch envelopes consist of a single phase and are formed by a table of period of
 It is important to note that pitch envelopes directly modify the period for the channel, and these modifications accumulate; i.e. envelope values are relative. But the FF3 engine does not allow pitch envelopes to cause the period to cross a $100-value boundary. While this is done to prevent audible glitches caused by writes to the period high register, the direct and cumulative modification of the period combine to create the unwanted side effect that the base pitch can be shifted due to clamping at the high/low points of the envelope. E.g. if a vibrato envelope has the repeating sequence +2, -2, -2, +2 (+/- 2) but the current period is $1ff and +2 would cause a boundary crossing, the result will be $1ff + 2 = $1ff, and then $1ff - 4 + 2 = $1fd, NOT $1ff; the center frequency has shifted.
 
 Pitch Envelope Format:
-00: End of envelope
-0LLL LLLL pp: Add offset p (signed) to current period and wait L frames
+00: End of envelope. No further modification will be made to pitch.
+0LLL LLLL pp: Add offset p (signed, two's complement) to current period and wait L frames
 1ooo oooo: Loop. Add 1:o (< 0) to current envelope position in bytes.
 
 Pitch envelope 1 serves as an example:
  
- 1 (1): +0:50 -1:6  +1:6  -4->2
+32 00 06 FF 06 01 FC
+32 00: Offset:length pair
+	L = $32: $32 frames
+	p = 0: +0 period units
+06 FF: Offset:length pair
+	L = 6: 6 frames
+	p = $ff: -1 period units
+06 01: Offset:length pair
+	L = 6: 6 frames
+	p = 1: +1 period units
+FC: Loop. $fc = -4 bytes, so go back 2 offset:length pairs
  
-This consists of 4 commands: 3 2-byte offset:length pairs and a loop command that goes back 4 bytes to offset 2 (after the first offset:length pair). This is a delayed vibrato envelope that waits 50 frames before beginning a vibrato of depth 1 period value and period of 12 frames (5 Hz). This small of a depth will produce a very slight but perceivable vibrato, e.g. for A440 +/- about 3.3 cents.
+This is a delayed vibrato envelope that waits 50 frames before beginning a vibrato of depth 1 period value and period of 12 frames (5 Hz). This small of a depth will produce a very slight but perceivable vibrato, e.g. for A440 +/- about 3.3 cents.
 
- 8 (8): -1:4  -2->0
+04 FF FE
+04 FF: Offset:length pair
+	L = 4: 4 frames
+	p = $ff: -1 period units
+FE: Loop. $fe = -2 bytes, so go back 1 offset:length pair
  
 Envelope 8 demonstrates a couple things. It is a pitch slide envelope, decreasing the period by 1 every 4 frames (rising pitch). This may well not work as intended, however, because of the inability for pitch slide to cause period values to cross $100 boundaries. As such the pitch slide will abruptly end at the next (lowest) $100 boundary.
 
@@ -210,6 +228,9 @@ Pitch Envelope Table:
 36:9eab word[$10]: Addresses of pitch envelopes
 
 Pitch Envelopes:
+
+Pairs show period offset on the left side and length on the right. Loops are indicated with structures like -2->4 which show the relative byte offset on the left side and the new absolute offset on the right (2x the number of offset:length pairs). Terminal 00 bytes are not shown for non-looping envelopes.
+
  0 (0) @9ecb (6dedb): -1:4  +1:4  -4->0
  1 (1) @9ed0 (6dee0): +0:50 -1:6  +1:6  -4->2
  2 (2) @9ed7 (6dee7): -1:50 +1:6  -1:6  -4->2
@@ -227,15 +248,21 @@ Pitch Envelopes:
 14 (e) @9f8d (6df9d): +7:1  -3:1  -3:1  -3:1  -3:1  -2:2  +1:2  +1:2  -1:2  -1:2  -8->12
 15 (f) @9fa2 (6dfb2): -7:1  +7:1  +7:2  -2:1  -3:1  -3:1  -3:1  -3:1  +2:1  +2:1  +2:1  -2:1  -2:1  -2:1  +2:1  +2:1  +2:1  -2:1  -2:1  -2:1  +2:1  +2:1  +2:1  -2:1  -2:1  -2:1  +2:1  +2:1  +2:1  +2:1  +2:1  +2:1  +2:1
 
+Code to load the address of a pitch envelope:
+86DE    LDA $9EAB,Y              
+86E1    STA $D8                  
+86E3    LDA $9EAC,Y              
+86E6    STA $D9                  
+
 Volume Envelopes
 
-Volume envelopes are significantly more complex and offer greater flexibility, consisting of 3 phases: attack, sustain, and release. However, any of these phases may be 0-length, and they need not be used as named; e.g. the attack or sustain envelopes can be used as decay instead, for non-sustaining instruments. Unlike pitch envelopes, channels have an envelope volume value separate from the channel volume specified by the corresponding channel command; these two values are multiplied to get the final volume which is actually written to the hardware.
+Volume envelopes are significantly more complex and offer greater flexibility, consisting of 3 phases: attack, sustain, and release. However, any of these phases may be 0-length, and they need not be used as named; e.g. the attack or sustain envelopes can be used as decay instead, for non-sustaining instruments. Unlike pitch envelopes, channels have an envelope volume value separate from the channel volume specified by the corresponding channel command; these 2 values are multiplied to get the final volume which is actually written to the hardware.
 
-Note auto-release is directly related to the volume envelope. When a note begins, the specified length of the note and any tied lengths are added up, and 3/4 of this value (subject to some rounding errors) is assigned as the note's sustain length. The sustain length determines the maximum time the note may stay in the sustain phase, if the envelope does not result in the phase ending sooner, before it is forced into the release phase. This sustain length is exclusive to the sustain phase, and does not include the time spent in the attack phase; this makes it strongly recommended that harmonies between channels should share an envelope if there is an attack phase.
+Note auto-release is directly related to the volume envelope. When a note begins, the specified length of the note and any tied lengths are added up, and 3/4 of this value (subject to some rounding errors) is assigned as the note's sustain length. The sustain length determines the maximum time the note may stay in the sustain phase before it is forced into the release phase, if the envelope does not result in the phase ending sooner. This sustain length is exclusive to the sustain phase, and does not include the time spent in the attack phase; this makes it strongly recommended that harmonies between channels should share an envelope if there is an attack phase.
 
-The attack phase is the simplest. It consists of a simple table of 1 or more volume values, one per frame; 1 value is always necessary to set the initial volume of the sustain and release phases. Each frame the corresponding value is assigned to the channel's envelope volume, and the attack phase ends when the table ends. While the intent of the attack phase is to go from pre-note silence to max volume, many FF3 envelopes use it as a decay envelope, fading out from max volume either to silence or to some lower sustained volume, and do not use sustain or release envelopes at all.
+The attack phase is the simplest. It consists of a simple table of 1 or more volume values, 1 per frame; 1 value is always necessary to set the initial volume of the sustain and release phases. Each frame the corresponding value is assigned to the channel's envelope volume, and the attack phase ends when the table ends. While the intent of the attack phase is to go from pre-note silence to max volume, many FF3 envelopes use it as a decay envelope, fading out from max volume either to silence or to some lower sustained volume, and do not use sustain or release envelopes at all.
 
-Sustain and release phases function almost identically and in fact share almost all of their code. They are notably more complex than the attack phase, for several reasons. The basic structure of sustain/release envelope tables is identical to that of the pitch envelope: a series of offset:length pairs with an optional repeat point, which tells the engine to modify the volume and then wait for a number of frames before modifying it again.
+Sustain and release phases function almost identically and in fact share almost all of their code. They are notably more complex than the attack phase, for several reasons. The basic structure of sustain/release envelope tables is identical to that of the pitch envelope: a series of offset:length pairs with an optional repeat point, which tells the engine to set the volume and then wait for a number of frames before modifying it again.
 
 However, there is a key difference in interpretation due to the fact that the purpose of a volume envelope is typically to fade out; in fact the primary mechanism of the sustain and release phases is a per-phase parameter that specifies fade-out speed between 0 (no fade out) and 100 (decrement the envelope volume each frame). This is how the envelope volume value is used, and when it reaches 0 the note is stopped, whether in sustain or release phase. The envelope table in fact serves as an adjustment value to this process; rather than actually modifying the envelope volume value, each frame the channel volume is multiplied by the envelope volume + the current adjustment value to get the value written to the hardware. As such the current table values do NOT accumulate, nor do they affect the end of note condition caused by the envelope volume value reaching 0. Conversely, the phase does not end when the table ends; rather, the fade out continues with no further modification from the table (i.e. the modification value is 0).
 
@@ -243,7 +270,7 @@ To summarize:
 
 Attack Phase:
 - Simple, per-frame table-based
-- Table must contain at least one entry to serve as initial envelope volume
+- Table must contain at least 1 entry to serve as initial envelope volume
 - Phase ends when the table ends
 Sustain Phase:
 - Initial volume specified by the final volume of the attack phase
@@ -266,8 +293,8 @@ Sustain/Release Envelope Header:
 +0 byte: Volume fade-out/frame * 100, from 0 to 100. If 0, volume is never decremented.
 
 Sustain/Release Envelope Format:
-00: End of explicit list. Fade-out continues as long as note is in phase.
-0LLL LLLL vv: Use volume offset v (signed) for the next L frames
+00: End of modification table. Fade-out continues as long as note is in phase.
+0LLL LLLL vv: Use volume offset v (signed, two's complement) for the next L frames
 1ooo oooo: Loop. Add 1:o (< 0) to current envelope position in bytes.
 
 This offers considerable flexibility and potential for space-savings, though some examples may be needed to fully understand.
@@ -287,7 +314,7 @@ Envelope 16 features a more gradual fade out. The attack phase simply sets the i
 Volume Envelope 23 (17):
 A @9cab (6dcbb):  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
 
-Envelope 23 is a pure fade-in envelope that ramps up to 15, maintaining max volume until the next note or rest.
+Envelope 23 is a pure attack envelope that ramps up to 15 and maintains max volume until the next note or rest.
 
 Volume Envelope 37 (25):
 A @9e75 (6de85): 15
@@ -303,6 +330,8 @@ Volume Envelope Table:
 +4 word: Address of release envelope
 
 Volume Envelopes
+
+For sustain/release envelopes pairs show volume offset on the left side and length on the right. Loops are indicated with structures like -2->4 which show the relative byte offset on the left side and the new absolute offset on the right (2x the number of offset:length pairs). Terminal bytes are not shown for non-looping envelope tables.
 
 Volume Envelope 0 (0):
 A @9ad4 (6dae4): 15  9  3  0
@@ -443,9 +472,15 @@ R @9b53 (6db63):  5
 Volume Envelope 40 (28):
 A @9e83 (6de93):  7  7  9 11 13 15 15 15 15 10  5 10 15 10  5  0  5 10 15 10  5  0  0  5 10 15 10  5  0  0  0  5 10 15 10  5  0
 
+Code to load a volume envelope table address:
+85BB    LDA $9A7C,Y              
+85BE    STA $D6                  
+85C0    LDA $9A7D,Y              
+85C3    STA $D7                  
+
 SOUND EFFECT FORMAT
 
-The sound effect format is nearly identical to the music format, and is played mostly by the same code. The only two noteworthy differences are that sound effects are limited to the square 2 and noise channels and have a fixed tempo of 150 BPM in which 1 tick = 1 frame (see the note/rest length table); in fact sound effects MUST NOT set the tempo, as that will set the tempo for music playback instead.
+The sound effect format is nearly identical to the music format, and is played mostly by the same code. The only 2 noteworthy differences are that sound effects are limited to the square 2 and noise channels and have a fixed tempo of 150 BPM in which 1 tick = 1 frame (see the note/rest length table); in fact sound effects MUST NOT set the tempo, as that will set the tempo for music playback instead.
 
 Sound Effect Header Structure:
 +0 word[2]: Channel data addresses in order of square 2, noise
@@ -472,9 +507,9 @@ f: Triplet 64th (1)
 
 Track Tables
 
-FF3 distributes both its tracks and its track tables across multiple $2000-byte banks. The bank at address $8000 is $36 for all sound code, while the bank at $a000 and table address are shown below.
+FF3 distributes both its tracks and its track tables across multiple $2000-byte banks. The bank at address $8000 is $36 for all sound code, while the bank at $a000 and header address are shown below. Note that sometimes the track header or channel data is in the common bank at $8000-$9fff.
 
-Track Table Addresses:
+Track Header Address Tables (array of words):
 37:a000: Tracks 0 (0) to 24 (18)
 38:a000: Tracks 25 (19) to 42 (2a)
 39:8c77: Tracks 43 (2b) to 54 (36)
@@ -482,72 +517,72 @@ Track Table Addresses:
  9:b400: Tracks 59 (3b) to 64 (40)
 
 Combined Track and Channel Addresses:
-Track   Bk Addr  Sq1A  Sq1FO  Sq2A  Sq2FO  TriA  TriFO  NoiA  NoiFO  KckA  KckFO
- 0 (0)  37:a032: a03c (6e04c) a05f (6e06f) a067 (6e077) ffff         ffff
- 1 (1)  37:a07c: a086 (6e096) a1ca (6e1da) ffff         ffff         ffff
- 2 (2)  37:a1d2: a1dc (6e1ec) a324 (6e334) a401 (6e411) ffff         ffff
- 3 (3)  37:a444: a44e (6e45e) a4a6 (6e4b6) a4ae (6e4be) ffff         ffff
- 4 (4)  37:a56a: a574 (6e584) a641 (6e651) ffff         ffff         ffff
- 5 (5)  37:a685: a68f (6e69f) a700 (6e710) a774 (6e784) ffff         ffff
- 6 (6)  37:a7f6: a800 (6e810) a861 (6e871) a8bf (6e8cf) ffff         ffff
- 7 (7)  37:a97c: a986 (6e996) a9d6 (6e9e6) aa1f (6ea2f) aa5f (6ea6f) aa6e (6ea7e)
- 8 (8)  37:aa81: aa8b (6ea9b) ab3d (6eb4d) ab81 (6eb91) ffff         ffff
- 9 (9)  37:abef: abf9 (6ec09) ac7e (6ec8e) acd8 (6ece8) ffff         ffff
-10 (a)  37:ad36: ad40 (6ed50) ada4 (6edb4) ae40 (6ee50) ffff         ffff
-11 (b)  37:aeb9: aec3 (6eed3) af5a (6ef6a) afd6 (6efe6) ffff         ffff
-12 (c)  37:b042: b04c (6f05c) b0ba (6f0ca) b114 (6f124) ffff         ffff
-13 (d)  37:b16c: b176 (6f186) b1fa (6f20a) b25b (6f26b) ffff         ffff
-14 (e)  37:b2b8: b2c2 (6f2d2) b2e9 (6f2f9) b30e (6f31e) ffff         ffff
-15 (f)  37:b323: b32d (6f33d) b370 (6f380) b403 (6f413) ffff         ffff
-16 (10) 37:b452: b45c (6f46c) b4b2 (6f4c2) b502 (6f512) ffff         ffff
-17 (11) 37:b58b: b595 (6f5a5) b608 (6f618) b66a (6f67a) ffff         ffff
-18 (12) 37:b6a8: b6b2 (6f6c2) b77d (6f78d) b879 (6f889) ffff         ffff
-19 (13) 37:b92a: b934 (6f944) b9b2 (6f9c2) ba35 (6fa45) ffff         ffff
-20 (14) 37:ba6d: ba77 (6fa87) bb0c (6fb1c) bbad (6fbbd) ffff         ffff
-21 (15) 37:bc54: bc5e (6fc6e) bcb5 (6fcc5) bd60 (6fd70) ffff         ffff
-22 (16) 37:be23: be2d (6fe3d) be9f (6feaf) becd (6fedd) ffff         ffff
-23 (17) 37:bf3d: bf47 (6ff57) bf63 (6ff73) bf74 (6ff84) ffff         ffff
-24 (18) 37:bf81: bf8b (6ff9b) bfb8 (6ffc8) bfdc (6ffec) ffff         ffff
-25 (19) 38:a024: a02e (7003e) a090 (700a0) a0e5 (700f5) ffff         ffff
-26 (1a) 38:a125: a12f (7013f) a175 (70185) a1ab (701bb) ffff         ffff
-27 (1b) 38:a1d2: a1dc (701ec) a23a (7024a) a268 (70278) ffff         ffff
-28 (1c) 38:a2a7: a2b1 (702c1) a2ed (702fd) a31e (7032e) ffff         ffff
-29 (1d) 38:a332: a33c (7034c) a37c (7038c) a3e3 (703f3) ffff         ffff
-30 (1e) 38:a46f: a479 (70489) a4f9 (70509) a63d (7064d) ffff         ffff
-31 (1f) 38:a748: a752 (70762) a7cd (707dd) a827 (70837) ffff         ffff
-32 (20) 38:a92b: a935 (70945) a9bf (709cf) aae1 (70af1) aba6 (70bb6) ac38 (70c48)
-33 (21) 38:ac7f: ac89 (70c99) acde (70cee) ad5b (70d6b) ffff         ffff
-34 (22) 38:ad97: ada1 (70db1) ae05 (70e15) ae5d (70e6d) ffff         ffff
-35 (23) 38:af00: af0a (70f1a) af8b (70f9b) b02e (7103e) ffff         ffff
-36 (24) 38:b0a5: b0af (710bf) b163 (71173) b201 (71211) ffff         ffff
-37 (25) 38:b236: b240 (71250) b2b4 (712c4) b364 (71374) ffff         ffff
-38 (26) 38:b40b: b415 (71425) b4c9 (714d9) b542 (71552) ffff         ffff
-39 (27) 38:b585: b58f (7159f) b5e6 (715f6) b675 (71685) ffff         ffff
-40 (28) 38:b717: b721 (71731) b851 (71861) b927 (71937) b9ba (719ca) ba66 (71a76)
-41 (29) 38:ba9a: baa4 (71ab4) bb02 (71b12) bc22 (71c32) ffff         ffff
-42 (2a) 38:bcc0: bcca (71cda) bd8b (71d9b) be98 (71ea8) bf61 (71f71) bfb7 (71fc7)
-43 (2b) 39:8c8f: 8c99 (6cca9) 8cb5 (6ccc5) 8cc9 (6ccd9) ffff         ffff
-44 (2c) 39:8cd2: 8cdc (6ccec) 8cf6 (6cd06) 8d13 (6cd23) ffff         ffff
-45 (2d) 39:8d1a: 8d24 (6cd34) 8d57 (6cd67) 8d84 (6cd94) ffff         ffff
-46 (2e) 39:8da2: 8dac (6cdbc) 8e21 (6ce31) 8ed4 (6cee4) ffff         ffff
-47 (2f) 39:8f76: 8f80 (6cf90) 8fe6 (6cff6) 9043 (6d053) ffff         ffff
-48 (30) 39:9128: 9132 (6d142) 913b (6d14b) ffff         9140 (6d150) ffff
-49 (31) 39:9148: 9152 (6d162) 916b (6d17b) 9182 (6d192) 918c (6d19c) ffff
-50 (32) 39:919c: 91a6 (6d1b6) 91b4 (6d1c4) ffff         91b9 (6d1c9) ffff
-51 (33) 39:91c3: 91cd (6d1dd) 91da (6d1ea) 91e5 (6d1f5) 91f0 (6d200) ffff
-52 (34) 39:9201: 920b (6d21b) 9215 (6d225) ffff         ffff         ffff
-53 (35) 39:9220: 922a (6d23a) 922c (6d23c) ffff         923d (6d24d) ffff
-54 (36) 39:924a: 9254 (6d264) 92bd (6d2cd) ffff         ffff         ffff
-55 (37) 39:b3b6: b3c0 (733d0) b4c8 (734d8) b6f9 (73709) ffff         ffff
-56 (38) 39:b876: b880 (73890) b913 (73923) b9d8 (739e8) ffff         ffff
-57 (39) 39:ba82: ffff         ba8c (73a9c) baa4 (73ab4) ffff         ffff
-58 (3a) 39:babf: bac9 (73ad9) bae9 (73af9) ffff         ffff         ffff
-59 (3b)  9:b40c: b416 (13426) b57d (1358d) b991 (139a1) bb7a (13b8a) ffff
-60 (3c)  9:bcc7: bcd1 (13ce1) bd58 (13d68) ffff         ffff         ffff
-61 (3d)  9:be7f: be89 (13e99) beb4 (13ec4) bf00 (13f10) ffff         ffff
-62 (3e)  9:bf14: bf1e (13f2e) bf69 (13f79) bf71 (13f81) ffff         ffff
-63 (3f)  9:bfa5: bfaf (13fbf) bf69 (13f79) bf71 (13f81) ffff         ffff
-64 (40)  9:bfb4: bfbe (13fce) ffff         ffff         ffff         ffff
+ # Name                        Bk HdrA   Sq1A  Sq2A  TriA  NoiA  KckA
+ 0 Resting at the Inn          37:a032:  a03c  a05f  a067
+ 1 The Prelude                 37:a07c:  a086  a1ca
+ 2 Crystal Cave                37:a1d2:  a1dc  a324  a401
+ 3 Elia, the Maiden of Water   37:a444:  a44e  a4a6  a4ae
+ 4 Lute of Noah                37:a56a:  a574  a641
+ 5 Return of the Warrior       37:a685:  a68f  a700  a774
+ 6 Town of Water               37:a7f6:  a800  a861  a8bf
+ 7 Fanfare                     37:a97c:  a986  a9d6  aa1f  aa5f  aa6e
+ 8 Chocobos!                   37:aa81:  aa8b  ab3d  ab81
+ 9 Good Ol' Fellows            37:abef:  abf9  ac7e  acd8
+ a Go Above the Clouds!        37:ad36:  ad40  ada4  ae40
+ b Cute Little Tozas           37:aeb9:  aec3  af5a  afd6
+ c Jinn, the Fire              37:b042:  b04c  b0ba  b114
+ d Living Forest               37:b16c:  b176  b1fa  b25b
+ e Hazardous Short Music 3     37:b2b8:  b2c2  b2e9  b30e
+ f Beneath the Horizon         37:b323:  b32d  b370  b403
+10 Time Remains                37:b452:  b45c  b4b2  b502
+11 Vegies of Geasal            37:b58b:  b595  b608  b66a
+12 In the Covert Town          37:b6a8:  b6b2  b77d  b879
+13 The Requiem                 37:b92a:  b934  b9b2  ba35
+14 Opening Theme               37:ba6d:  ba77  bb0c  bbad
+15 Deep Under the Water        37:bc54:  bc5e  bcb5  bd60
+16 Shrine of Nept              37:be23:  be2d  be9f  becd
+17 Item Get                    37:bf3d:  bf47  bf63  bf74
+18 Garuda Defeat               37:bf81:  bf8b  bfb8  bfdc
+19 Big Chocobo!                38:a024:  a02e  a090  a0e5
+1a Swift Twist                 38:a125:  a12f  a175  a1ab
+1b Good Morning!               38:a1d2:  a1dc  a23a  a268
+1c Dancer's Dance              38:a2a7:  a2b1  a2ed  a31e
+1d The Dungeon                 38:a332:  a33c  a37c  a3e3
+1e Eternal Wind                38:a46f:  a479  a4f9  a63d
+1f My Home Town                38:a748:  a752  a7cd  a827
+20 Battle                      38:a92b:  a935  a9bf  aae1  aba6  ac38
+21 The Way to the Top          38:ac7f:  ac89  acde  ad5b
+22 Sailing Enterprise          38:ad97:  ada1  ae05  ae5d
+23 The Invincible              38:af00:  af0a  af8b  b02e
+24 Tower of Owen               38:b0a5:  b0af  b163  b201
+25 The Crystal Tower           38:b236:  b240  b2b4  b364
+26 Let Me Know the Truth       38:b40b:  b415  b4c9  b542
+27 Forbidden Land              38:b585:  b58f  b5e6  b675
+28 This is the Last Battle 3   38:b717:  b721  b851  b927  b9ba  ba66
+29 The Dark Crystals           38:ba9a:  baa4  bb02  bc22
+2a Boss Battle                 38:bcc0:  bcca  bd8b  be98  bf61  bfb7
+2b Parting with a Companion    39:8c8f:  8c99  8cb5  8cc9
+2c Added Companion             39:8cd2:  8cdc  8cf6  8d13
+2d Hazardous Short Music 2     39:8d1a:  8d24  8d57  8d84
+2e Salonia                     39:8da2:  8dac  8e21  8ed4
+2f The Boundless Ocean         39:8f76:  8f80  8fe6  9043
+30 Fall SFX                    39:9128:  9132  913b        9140
+31 Danger SFX                  39:9148:  9152  916b  9182  918c
+32 Shattering SFX              39:919c:  91a6  91b4        91b9
+33 Applause SFX                39:91c3:  91cd  91da  91e5  91f0
+34 Boo SFX                     39:9201:  920b  9215
+35 Bahamut Flies SFX           39:9220:  922a  922c        923d
+36 Crystal Room                39:924a:  9254  92bd
+37 The Everlasting World 2     39:b3b6:  b3c0  b4c8  b6f9
+38 Castle of Hain              39:b876:  b880  b913  b9d8
+39 Chocobo Forest              39:ba82:        ba8c  baa4
+3a Let's Play the Piano Again! 39:babf:  bac9  bae9
+3b The Everlasting World 3      9:b40c:  b416  b57d  b991  bb7a
+3c The Everlasting World 1      9:bcc7:  bcd1  bd58
+3d Hazardous Short Music 1      9:be7f:  be89  beb4  bf00
+3e This is the Last Battle 1    9:bf14:  bf1e  bf69  bf71
+3f This is the Last Battle 2    9:bfa5:  bfaf  bf69  bf71
+40 Let's Play the Piano!        9:bfb4:  bfbe
 
 Moving Track Tables and Data
 
