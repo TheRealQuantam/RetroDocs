@@ -1,5 +1,5 @@
 FINAL FANTASY II (NES) MUSIC FORMAT
-v0.1
+v0.2
 
 By Justin Olbrantz (Quantam)
 
@@ -12,10 +12,10 @@ The FF2 engine is not entirely abstracted from the NES' Audio Processing Unit ha
 Basic Features:
 - Compact single-byte notes and rests
 + Staff notation style divisive rhythm system
-	- 6-octave chromatic scale from C2 (65.4 Hz) to B7 (7457 Hz) for square wave (triangle is one octave lower)
+	- 6-octave chromatic scale from C2 (65.4 Hz) to B7 (7457 Hz) for square wave (triangle is 1 octave lower)
 	- 16 note lengths from whole notes through 64th notes with dots and triplets for some lengths
 	- Length tie to create arbitrary lengths
-	- High-precision tempo from 2 to 362 BPM
+	- High-precision tempo from 2 to 360 BPM
 + Complex timbre support
 	Square channels: Duty cycle, channel volume, fade out, volume envelope, and linear period pitch envelope
 	Triangle channel: Linear period pitch envelope
@@ -40,20 +40,23 @@ Some general notes in interpreting this specification:
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
 - Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
+- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could match 0n). These lists are ordered such that the first matching command is the correct interpretation.
 
 MUSIC FORMAT
 
 Track Header Structure:
-+0 word[3]: Channel data addresses in order of square 1, square 2, triangle
++0 word[3]: Channel data addresses in order of square 1, square 2, triangle, or $ffff if none
 
-Channel Data FORMAT
+Note that if a track lacks all 3 channels (the Silence track) it also lacks an end of track command, and consequently maintains silence without triggering reload of the previously playing track.
+
+Channel Data Format
 
 Notes and rests are encoded as single-byte events of the format kL. For notes, k is 0-$b, corresponding to C-B within the current octave, and L is the length the note should play before continuing.
 
 Key number: 0   1   2   3   4   5   6   7   8   9  $a  $b
 Key:        C  C#   D  D#   E   F  F#   G  G#   A  A#   B
 
-Events of the format dL are tied lengths. These events serve to continue the previous note and extend its length by L time. Unlike in FF3, tied lengths need not immediately follow their notes, and other events may come between them. It is thus possible to make some modifications to the note as it is playing, though some care must be taken with this because not everything is made to work in such a way; e.g. the current envelope positions will only be reset by the start of a new note, NOT by a change to different envelopes.
+Events of the format dL are tied lengths. These events serve to continue the previous note and extend its length by L time. Unlike in FF3, tied lengths need not immediately follow their notes, and other events may come between them. It is thus possible to make some modifications to the note as it is playing, though some care must be taken with this because not everything is made to work in such a way; e.g. the current envelope positions will only be reset by the start of a new note, NOT by a change to a different envelope.
 
 Finally, rests have the form cL. Unlike in FF1, rests in FF2 behave as expected and properly silence the preceding note.
 
@@ -65,7 +68,7 @@ Dotted note lengths:            1    3    6     9
 Triplet note lengths:           4    7   $a    $c    $e    $f
 
 In addition to notes, rests, and tied lengths, the following commands are defined:
-e0 tt: Set global tempo to t * 2 BPM. Defaults to 75 (150 BPM). MUST NOT exceed 181 (362 BPM).
+e0 tt: Set global tempo to t * 2 BPM. Defaults to 75 (150 BPM). MUST NOT exceed 180 (360 BPM).
 e1-ef: Set square wave channel volume to 1 ($e1)-15 ($ef). Defaults to 15. IGNORED if channel has no volume envelope (in this case command $f6 can be used to set the volume by directly setting the ctrl 1 register). This MUST NOT be used on the triangle channel.
 f0-f5: Set current octave to 0 ($f0)-5 ($f5). Octave 0 begins at C2 for square wave, while triangle wave is 1 octave lower. Has no default, and MUST be set prior to playing notes.
 f6 CC vv ww pp qq: Set timbre and envelopes. Set ctrl 1 to C, set volume envelope address to w:v ($ffff if none) and pitch envelope address to q:p ($ffff if none). 
@@ -74,14 +77,16 @@ For square wave channels C has the form dd1v xxxx (default of $30):
 	v: Determines how to interpret x. Must be set if a volume envelope is used.
 	x: If v is set, the volume for the channel (ignored if a volume envelope is used). If v is clear, volume fades out from 15 to 0 at a rate of 1 volume every x+1 quarter-frames.
 	
-For triangle channel C should always be set to $80 (the default).
+For triangle channel C is largely irrelevant and can be left as $80 (the default).
 
 f7 nn: Begin loop and set loop counter to n (> 0)
 f8-fb: Begin loop and set loop counter to 2 ($f8)-5 ($fb)
 fc xx yy: End loop. Decrement loop counter and if not 0 go to y:x, else end loop and continue.
 fd xx yy: Odd loop break. If loop counter is odd (1, 3, etc.) end loop and go to y:x, else continue.
 fe xx yy: Go to y:x
-ff: End track and resume previous track if any
+ff: End track and on the next frame resume previous track if any
+
+Note that the global nature of the end of track command means that only the first channel's data to reach its end need be explicitly terminated and the other channels will be stopped as well. However, there is a 1 frame delay between track ending and silencing of channels/resuming of the previously playing track. This means that on the terminal frame all channels will be processed even after 1 channel reaches an end of track command; if multiple channels end on exactly the same frame, all such channels must be explicitly terminated to avoid executing invalid data.
 
 Examples
 
@@ -104,11 +109,11 @@ F8: Begin loop and set loop counter to 2
 FC 2E A0: Odd loop break
 	y:x = $a02e: If loop counter is odd (second playthrough) end loop and go to $a02e
 FC 0A A0: End loop
-	y:x = $a00a: If loop counter is not 0 go to $a00a, else end loop
+	y:x = $a00a: Decrement loop counter and if not 0 go to $a00a, else end loop
 	
 Triangle:
 F6 FF FF FF E4 BE: Set timbre and envelopes
-	C = $ff: As long as $80 is set the rest of the bits don't really matter
+	C = $ff: C doesn't really matter for triangle
 	w:v = $ffff: No volume envelope. Triangle can't use one anyway.
 	q:p = $bee4: Set pitch envelope address to $bee4
 
@@ -116,7 +121,7 @@ Loop Shenanigans
 
 Overly clever hackers may notice that the fact that the end loop command (as well as odd loop break) specifies an explicit address means the loop need not return to where it began; in fact it need not form a loop at all. Thus the end loop command is essentially an if-then-else statement: decrement the loop counter and if not 0 go to x, else continue; and these commands can be strung together to function like a switch-case structure. This can be abused for a number of purposes, to name a few:
 - Loops that repeat a different number of times depending on whether they're in the first or subsequent playthrough of the track. Here the loop simply needs to have different loop counter values set the first time it's run vs. when the track loops.
-- Subroutines. A non-looping block of music data can be reached from multiple locations with different loop counter values, and one or more end loop commands can be used to return to different locations depending on the value of the loop counter. Though note that using a subroutine in too many places will have a performance impact due to the multiple end loop commands needed.
+- Subroutines. A non-looping block of music data can be reached from multiple locations with different loop counter values, and 1 or more end loop commands can be used to return to different locations depending on the value of the loop counter. Though note that using a subroutine in too many places will have a performance impact due to the multiple end loop commands needed.
 
 ENVELOPES
 
@@ -134,24 +139,29 @@ Volume envelope volume values are independent of the channel volume, and the fin
 It is interesting to note that while looping volume envelopes are supported, no volume envelopes in FF2 use this feature.
 
 For example:
-bd04 (37d14): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:2 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+2F 2E 2D 2C 2B 2A 29 28 27 26 25 24 23 22 21 10 00
+2F: Set envelope volume to $f for 2 frames
+2E: Set envelope volume to $e for 2 frames
+...
+10: Set envelope volume to 0 for 1 frame
+00: End of envelope
 
 This is a straightforward decay envelope that begins at max volume and fades out at a rate of 1 volume every 2 frames.
 
-beaf (37ebf): 11:1 12:1 13:1 14:1 15:1 14:1 13:1 12:1 11:1 10:1 9:1 8:1 7:1 6:2 5:2 4:2 3:2 2:2 1:2 0:1
+1B 1C 1D 1E 1F 1E 1D 1C 1B 1A 19 18 17 26 25 24 23 22 21 10 00
 
-A slightly more complicated envelope that has an attack from 11-15 at a rate of 1 volume/frame, a first decay from 15-6 at a rate of 1 volume/frame, and finally a second decay from 6-0 at 1 volume every 2 frames.
+A slightly more complicated envelope that has an attack from $b to $f at a rate of 1 volume/frame, a first decay from $f-6 at a rate of 1 volume/frame, and finally a second decay from 6-0 at 1 volume every 2 frames.
 
 Pitch Envelopes
 
 Pitch Envelope Format:
 00: End of envelope
 0o: Loop. Subtract o from current envelope offset in bytes.
-(LLLL nooo): Modify pitch period by n:o (in sign-magnitude format) and wait L frames; if n subtract o (increase pitch), else add o (decrease pitch).
+LLLL nooo: Modify pitch period by n:o (in sign-magnitude format) and wait L frames; if n subtract o (increase pitch), else add o (decrease pitch).
 
-Pitch envelopes directly modify the current wave period and are period-relative, e.g. in a pitch slide (repeating pitch change in one direction) the pitch change will accelerate over time when period is decreasing (rising pitch) and decelerate when period is increasing (falling pitch).
+Pitch envelopes directly modify the current wave period and are period-relative, e.g. in a pitch slide (repeating pitch change in 1 direction) the pitch change will accelerate over time when period is decreasing (rising pitch) and decelerate when period is increasing (falling pitch).
 
-One quirk of the APU is that updates to the high byte of the period retrigger synthesis of the note that is currently playing, which can cause noticeable artifacts. To avoid this the pitch envelope is not allowed to modify the high period byte, and period values are clamped to their nearest $100 boundaries. This has two unexpected side effects.
+1 quirk of the APU is that updates to the high byte of the period retrigger synthesis of the note that is currently playing, which can cause noticeable artifacts. To avoid this the pitch envelope is not allowed to modify the high period byte, and period values are clamped to their nearest $100 boundaries. This has 2 unexpected side effects.
 
 The direct and cumulative modification of the period has the side effect that the base pitch can be shifted due to clamping at the high/low points of the envelope. E.g. if a vibrato envelope has the repeating sequence +2, -2, -2, +2 (+/- 2) but the current period is $1ff and +2 would cause a boundary crossing, the result will be $1ff + 2 = $1ff, and then $1ff - 4 + 2 = $1fd, NOT $1ff; the center frequency has shifted.
 
@@ -159,25 +169,29 @@ Worse is that pitch slides will abruptly stop at the nearest $100 boundary. Work
 
 Examples
 
-bec7 (37ed7): +0:15 -1:4 +1:4 -2->1
+F0 49 41 02
+F0: Set period offset to +0 for $f frames
+49: Set period offset to -1 for 4 frames
+41: Set period offset to +1 for 4 frames
+02: Loop back 2 entries
 
-This is a vibrato envelope with a delay of 15 frames, a depth of 1 period unit, and a period of 8 frames (7.5 Hz).
+This is a vibrato envelope with a delay of 15 frames, a depth (peak to peak) of 1 period unit, and a period of 8 frames (7.5 Hz).
 
-bee4 (37ef4): -1:4 +2:4 -2:4 +2:4 -2:4 +2:4 -3:4 +4:4 -4:4 -2->7
+49 42 4A 42 4A 42 4B 44 4C 02
 
 This is a vibrato envelope with period of 8 (7.5 Hz) but a depth that grows from 1 to 8 over 28 frames (~0.5 sec).
 
-befb (37f0b): +1:1 -1->0
+11 01
 
-A trivial falling pitch slide that increases period at a rate of 1/frame. As previously mentioned, the fall in pitch will decelerate over time; e.g. at A440 pitch will decrease at a rate of 6.8 cents/frame, while at A880 pitch will decrease at a rate of 3.4 cents/frame. Except for one little detail: the period register value for A440 is $fd, and A880 is $1fa, just short of a $100 boundary; thus in reality this envelope will have little effect on an A440 or A880 note.
+A trivial falling pitch slide that increases period at a rate of 1/frame. As previously mentioned, the fall in pitch will decelerate over time; e.g. at A440 pitch will decrease at a rate of 6.8 cents/frame, while at A880 pitch will decrease at a rate of 3.4 cents/frame. Except for 1 little detail: the period register value for A440 is $fd, and A880 is $1fa, just short of a $100 boundary; thus in reality this envelope will have little effect on an A440 or A880 note.
 
 SOUND EFFECTS
 
-As with FF1, FF2 does not have a dedicated mechanism or format for playing sound effects, and sound effects are played ad hoc.
+As with FF1, FF2 does not have a dedicated mechanism or format for playing sound effects, and most sound effects are played ad hoc. 5 sound effects, however, are actually non-looping music tracks, as can be seen in the track table.
 
 ADDITIONAL TABLES
 
-All addresses are in memory, and all music data is in bank $d at address $8000. The file offset = addr + 0x2c010.
+All addresses are in the CPU address space, and all music data is in bank $d at address $8000. The file offset = addr + 0x2c010.
 
 Note/Rest Length Table in Ticks:
 0: Whole (96)
@@ -199,40 +213,42 @@ f: Triplet 64th (1)
 
 Track Table
 
-Table address: $9e0d ($35e1d)
+Table of track header addresses: $9e0d ($35e1d)
 
-Track   Addr  Sq1A  Sq1FO  Sq2A  Sq2FO  TriA  TriFO
- 0 (0)  9e4b: ffff         ffff         ffff
- 1 (1)  9e51: 9e57 (35e67) 9f57 (35f67) ffff
- 2 (2)  9f62: 9f68 (35f78) 9f7c (35f8c) ffff
- 3 (3)  9f87: 9f8d (35f9d) 9fcc (35fdc) 9fe1 (35ff1)
- 4 (4)  9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
- 5 (5)  9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
- 6 (6)  9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
- 7 (7)  a167: a16d (3617d) a197 (361a7) a1b5 (361c5)
- 8 (8)  a1c4: a1ca (361da) a1eb (361fb) ffff
- 9 (9)  a20d: a213 (36223) a234 (36244) ffff
-10 (a)  a255: a25b (3626b) a279 (36289) a299 (362a9)
-11 (b)  a2a0: a2a6 (362b6) a303 (36313) a3e8 (363f8)
-12 (c)  a465: a46b (3647b) a4c9 (364d9) a564 (36574)
-13 (d)  a5eb: a5f1 (36601) a6a0 (366b0) a734 (36744)
-14 (e)  a7ba: a7c0 (367d0) a85d (3686d) a8da (368ea)
-15 (f)  a99b: a9a1 (369b1) aa9a (36aaa) aada (36aea)
-16 (10) ab0b: ab11 (36b21) ab9b (36bab) ac25 (36c35)
-17 (11) ac5a: ac60 (36c70) acc7 (36cd7) ad0b (36d1b)
-18 (12) ad5a: ad60 (36d70) ae5e (36e6e) af53 (36f63)
-19 (13) b030: b036 (37046) b1c6 (371d6) b3a7 (373b7)
-20 (14) b510: b516 (37526) b521 (37531) ffff
-21 (15) b52a: b530 (37540) b596 (375a6) b5f5 (37605)
-22 (16) b64a: b650 (37660) b678 (37688) b6c4 (376d4)
-23 (17) b6d5: b6db (376eb) b703 (37713) b70f (3771f)
-24 (18) b74d: b753 (37763) b772 (37782) b77e (3778e)
-25 (19) b785: b78b (3779b) b7b1 (377c1) b816 (37826)
-26 (1a) b826: b82c (3783c) b860 (37870) b874 (37884)
-27 (1b) b8a0: b8a6 (378b6) b8e0 (378f0) b93f (3794f)
-28 (1c) b980: b986 (37996) b9b0 (379c0) b9cc (379dc)
-29 (1d) b9e1: b9e7 (379f7) bb3d (37b4d) bc78 (37c88)
-30 (1e) bce2: bce8 (37cf8) ffff         ffff
+The Main Theme is assigned 3 different track numbers. It's possible these may be used in different areas, but I don't know where.
+
+Track   Name                     HdrA  Sq1A  Sq1FO  Sq2A  Sq2FO  TriA  TriFO
+ 0 (0)  Silence                  9e4b: ffff         ffff         ffff
+ 1 (1)  Prelude                  9e51: 9e57 (35e67) 9f57 (35f67) ffff
+ 2 (2)  Sound Effect 1           9f62: 9f68 (35f78) 9f7c (35f8c) ffff
+ 3 (3)  Chocobo Theme            9f87: 9f8d (35f9d) 9fcc (35fdc) 9fe1 (35ff1)
+ 4 (4)  Main Theme               9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
+ 5 (5)  Main Theme               9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
+ 6 (6)  Main Theme               9ff2: 9ff8 (36008) a04b (3605b) a056 (36066)
+ 7 (7)  Fanfare                  a167: a16d (3617d) a197 (361a7) a1b5 (361c5)
+ 8 (8)  Sound Effect 2           a1c4: a1ca (361da) a1eb (361fb) ffff
+ 9 (9)  Sound Effect 3           a20d: a213 (36223) a234 (36244) ffff
+10 (a)  Join the Party!          a255: a25b (3626b) a279 (36289) a299 (362a9)
+11 (b)  Castle Pandemonium       a2a0: a2a6 (362b6) a303 (36313) a3e8 (363f8)
+12 (c)  Ancient Castle           a465: a46b (3647b) a4c9 (364d9) a564 (36574)
+13 (d)  Tower of the Magi        a5eb: a5f1 (36601) a6a0 (366b0) a734 (36744)
+14 (e)  Imperial Army Theme      a7ba: a7c0 (367d0) a85d (3686d) a8da (368ea)
+15 (f)  Dungeon                  a99b: a9a1 (369b1) aa9a (36aaa) aada (36aea)
+16 (10) Town                     ab0b: ab11 (36b21) ab9b (36bab) ac25 (36c35)
+17 (11) The Rebel Army           ac5a: ac60 (36c70) acc7 (36cd7) ad0b (36d1b)
+18 (12) Battle Theme             ad5a: ad60 (36d70) ae5e (36e6e) af53 (36f63)
+19 (13) Battle Theme 2           b030: b036 (37046) b1c6 (371d6) b3a7 (373b7)
+20 (14) Sound Effect 4           b510: b516 (37526) b521 (37531) ffff
+21 (15) Victory                  b52a: b530 (37540) b596 (375a6) b5f5 (37605)
+22 (16) Game Over                b64a: b650 (37660) b678 (37688) b6c4 (376d4)
+23 (17) The Princess's Seduction b6d5: b6db (376eb) b703 (37713) b70f (3771f)
+24 (18) Revival                  b74d: b753 (37763) b772 (37782) b77e (3778e)
+25 (19) Reunion                  b785: b78b (3779b) b7b1 (377c1) b816 (37826)
+26 (1a) Escape!                  b826: b82c (3783c) b860 (37870) b874 (37884)
+27 (1b) Waltz                    b8a0: b8a6 (378b6) b8e0 (378f0) b93f (3794f)
+28 (1c) The Emperor's Rebirth    b980: b986 (37996) b9b0 (379c0) b9cc (379dc)
+29 (1d) Finale                   b9e1: b9e7 (379f7) bb3d (37b4d) bc78 (37c88)
+30 (1e) Sound Effect 5           bce2: bce8 (37cf8) ffff         ffff
 
 The code that accesses the track table:
 986E    LDA $9E0D,X              
@@ -241,6 +257,8 @@ The code that accesses the track table:
 9876    STA $C9                  
 
 Volume Envelopes
+
+In an attempt to be more intuitive, pairs show volume on the left side and length on the right side. Terminal 00 bytes are not shown, but can be assumed as no volume envelopes loop.
 
 bd04 (37d14): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:2 6:2 5:2 4:2 3:2 2:2 1:2 0:1
 bd15 (37d25): 15:2 14:2 13:2 12:2 11:2 10:2 9:2 8:2 7:3 6:4 5:4 4:4 3:4 2:4 1:4 0:1
@@ -255,6 +273,8 @@ be87 (37e97): 3:2 5:2 7:2 9:2 11:2 13:2 15:3 12:3 15:3 12:3 15:3 12:3 15:3 11:3 
 beaf (37ebf): 11:1 12:1 13:1 14:1 15:1 14:1 13:1 12:1 11:1 10:1 9:1 8:1 7:1 6:2 5:2 4:2 3:2 2:2 1:2 0:1
 
 Pitch Envelopes
+
+Pairs show period offset on the left side and length on the right. Loops are indicated with structures like -2->1 which show the relative byte offset on the left side and the new absolute offset on the right. Terminal 00 bytes are not shown for non-looping envelopes.
 
 bec4 (37ed4): +0:4 +1:15
 bec7 (37ed7): +0:15 -1:4 +1:4 -2->1
