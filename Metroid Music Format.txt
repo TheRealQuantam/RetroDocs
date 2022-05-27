@@ -1,5 +1,5 @@
 METROID MUSIC FORMAT
-v0.1
+v0.2
 
 By Justin Olbrantz (Quantam)
 
@@ -104,35 +104,35 @@ Notes and Rests
 
 Metroid uses 2 different key sets, 1 for melodic channels (though triangle channel is 1 octave lower than the square channels), and 1 set of presets for the noise channel. The 2 do have 1 thing in common, however: while the ways key/preset numbers are encoded differs between the two, both use key code 1 as rest.
 
-Metroid has a peculiar melodic key set, as the set is unusually cramped even in comparison to other games using the same engine (although Gumshoe's key numbers are stranger still); all other games have more than $40 keys, and are not missing keys from octave 2. The Metroid engine has a maximum of $4f key codes (+ rest), and even higher is possible using an exploit, and if relocated the table could be expanded, though this is not entirely trivial and would need to be done for all banks.
+Metroid has a peculiar melodic key set, as the set is unusually cramped even in comparison to other games using the same engine (although Gumshoe's key numbers are stranger still); all other games have more than $40 keys, and are not missing keys from octave 2. The Metroid engine has a maximum of $57 key codes (+ rest), and even higher is possible using an exploit, and if relocated the table could be expanded, though this is not entirely trivial and would need to be done for all banks.
 
 Key Table:
 
-Oct   C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at Bx
-1:                                        0*         0.96 cents
-2:        2   3       4   5   6   7   8   9   a   b  1.91 cents
-3:    c   d   e   f  10  11  12  13  14  15  16  17  3.83 cents
-4:   18  19  1a  1b  1c  1d  1e  1f  20  21  22  23  7.66 cents
-5:   24  25  26  27  28  29  2a  2b  2c  2d  2e  2f  15.4 cents
-6:   30  31  32  33  34  35  36  37  38  39  3a  3b  30.8 cents
-7:   3c  3d  3e  3f
+Oct  C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at B
+1:                                       0*         0.96 cents
+2:       2   3       4   5   6   7   8   9   a   b  1.91 cents
+3:   c   d   e   f  10  11  12  13  14  15  16  17  3.83 cents
+4:  18  19  1a  1b  1c  1d  1e  1f  20  21  22  23  7.69 cents
+5:  24  25  26  27  28  29  2a  2b  2c  2d  2e  2f  15.49 cents
+6:  30  31  32  33  34  35  36  37  38  39  3a  3b  31.41 cents
+7:  3c  3d  3e          3f
 
-* Key code 0 is an exploit: if key code 0 IMMEDIATELY follows a set length command it will be assumed to be a note/rest rather than being interpreted as an end of track command. While not relevant to the Metroid set of only $40 keys, this same exploit can be used with keys above $4f.
+* Key code 0 is an exploit: if key code 0 IMMEDIATELY follows a set length command it will be assumed to be a note/rest rather than being interpreted as an end of track command. While not relevant to the Metroid set of only $40 keys, this same exploit can be used with keys above $57.
 
 The octaves listed in the table are for square wave channels, and the triangle channel will be 1 octave lower for each key code. As well, as can be seen from the table, Metroid has a nominal base key of C2, but codes 0-3 are irregular.
 
 Noise codes are peculiar. Rather than being preset numbers, they are 1-based indices into an array of noise presets, each entry being 3 bytes. Metroid has 3 noise presets, and their codes are thus 4, 7, and $a (as previously stated, code 1 is rest).
 
 Noise Key Table:
-4: Closed hi-hat
-7: Open hi-hat
-a: Snare drum
+4: Snare tap
+7: Snare full stroke
+a: Snare rim
 
-Channel Data Format
+Channel Data
 
-Channel data is quite basic, having just enough commands to be considered a minimally competent engine: notes, rests, set note length, loops, and end of track.  Keys and rests are encoded slightly differently between melodic and noise channels, but channel data is otherwise identical.
+Channel data is quite basic, having just enough commands to be considered a minimally competent engine: notes, rests, set note length, loops, and end of track. Keys and rests are encoded slightly differently between melodic and noise channels, but channel data is otherwise identical.
 
-One major difference between the Metroid music format and non-Nintendo engines is that while each channel has separate music data, the end of track command applies globally, and all channels will stop (or loop, depending on the track header) when ANY channel encounters the end of track command. Because of this, it is not necessary to explicitly terminate all channels, only the one that will reach its end first.
+1 major difference between the Metroid music format and non-Nintendo engines is that while each channel has separate music data, the end of track command applies globally, and all channels will stop (or loop, depending on the track header) when ANY channel encounters the end of track command. Because of this, it is not necessary to explicitly terminate all channels, only the 1 that will reach its end first.
 
 Channel Data Format:
 00: End of track. Either stop or restart the track when any channel encounters this.
@@ -204,19 +204,19 @@ Reminder: with the exception of certain track data and their corresponding heade
 
 Track Table
 
- #     Name           Bks Off   TO  Lp TriL  Sq1T  Sq2T  Sq1A  Sq2A  TriA  NoiA
- 0 (0) Ridley's Lair @4/5:+41:   b  ff  f:0  b3:1  b3:1  b022  b031  b000     0
- 1 (1) Tourian       @all:+8f:   b  ff  0:3  92:0  96:0  be59  be47  be62     0
- 2 (2) Item Room     @all:+34:   b  ff  0:3  92:0  96:0  bdda  bddc  bdcd     0
- 3 (3) Kraid's Lair  @4/5:+27:   0  ff  f:0  92:0  96:0  b03f  b041  b0aa     0
- 4 (4) Norfair       @  2:+1a:   b  ff  f:0  34:4  34:4  b000  b026  b057  b08b
- 5 (5) Escape        @  3: +d:   b  ff  0:0  f4:2  f4:2  b04d  b000  b0cf  b15a
- 6 (6) Mother Brain  @  3: +0:   b  ff  f:5  92:0  96:0  b18c  b18e  b161     0
- 7 (7) Brinstar      @  1:+82:   b  ff  0:0  34:2  34:3  b000  b057  b0c1  b12b
- 8 (8) Samus Appears @all:+68:   b   0  f:0  34:2  34:0  be3e  be1d  be36     0
- 9 (9) Item Fanfare  @all:+75:   0   0  f:0  b6:1  f6:0  bdf7  be0d  be08     0
-10 (a) Ending        @  0:+4e:  17   0  0:0  f5:2  f6:1  ac00  adc5  acf5  ae8e
-11 (b) Title Theme   @  0:+5b:  17   0  f:0  b6:2  f6:5  b0b9  b000  b076  b115
+ #     Name           Bks Off  TO  Lp TriL  Sq1T  Sq2T  Sq1A  Sq2A  TriA  NoiA
+ 0 (0) Ridley's Lair @4/5:+41:  b  ff  f:0  b3:1  b3:1  b022  b031  b000     0
+ 1 (1) Tourian       @all:+8f:  b  ff  0:3  92:0  96:0  be59  be47  be62     0
+ 2 (2) Item Room     @all:+34:  b  ff  0:3  92:0  96:0  bdda  bddc  bdcd     0
+ 3 (3) Kraid's Lair  @4/5:+27:  0  ff  f:0  92:0  96:0  b03f  b041  b0aa     0
+ 4 (4) Norfair       @  2:+1a:  b  ff  f:0  34:4  34:4  b000  b026  b057  b08b
+ 5 (5) Escape        @  3: +d:  b  ff  0:0  f4:2  f4:2  b04d  b000  b0cf  b15a
+ 6 (6) Mother Brain  @  3: +0:  b  ff  f:5  92:0  96:0  b18c  b18e  b161     0
+ 7 (7) Brinstar      @  1:+82:  b  ff  0:0  34:2  34:3  b000  b057  b0c1  b12b
+ 8 (8) Samus Appears @all:+68:  b   0  f:0  34:2  34:0  be3e  be1d  be36     0
+ 9 (9) Item Fanfare  @all:+75:  0   0  f:0  b6:1  f6:0  bdf7  be0d  be08     0
+10 (a) Ending        @  0:+4e: 17   0  0:0  f5:2  f6:1  ac00  adc5  acf5  ae8e
+11 (b) Title Theme   @  0:+5b: 17   0  f:0  b6:2  f6:5  b0b9  b000  b076  b115
 
 Table legend:
 	Bks: Bank(s) the track exists in
@@ -231,7 +231,7 @@ Table legend:
 bbfa byte[$c]: Track header offsets table. Offsets are relative to the track header block.
 bd31 structs: Track header block base
 
-Code to load the address of a track header:
+Code to load a track header:
 BF26    LDA $BBFA,Y              
 BF29    TAY                      
 BF2A    LDX #$00                 
@@ -277,6 +277,7 @@ BBF4    STA NoiseLength_400F
 
 bcb0 word[5]: Envelope addresses (0-based, unlike in track headers)
 
+Code to load an envelope address:
 BA5C    LDA $BCB0,Y              
 BA5F    STA $EC                  
 BA61    LDA $BCB1,Y              
