@@ -1,19 +1,19 @@
 METROID MUSIC FORMAT
-v0.2
+v0.3
 
 By Justin Olbrantz (Quantam)
 
 The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
 
-This specification describes the music format of the "Metroid music engine" used by Metroid as well as at least 2 other games: Gumshoe and Kid Icarus, all by Nintendo R&D2. The engine is the second in a series of 4 engines, though really they're 4 versions of the same engine with compatibility-breaking enhancements. The last 3 versions are believed to have been written by composer Hirokazu Tanaka, and are used mostly by R&D2 but also a couple other games he composed; there is, however, some uncertainty whether Tanaka or Yukio Kaneoka wrote the first version of the engine dating all the way back to Donkey Kong. Later versions of the engine would be used most notably by Mother and Tetris.
+This specification describes the music format of the "Metroid music engine" used by Metroid as well as at least 2 other games: Gumshoe and Kid Icarus, all by Nintendo Research and Development 1. The Metroid engine is 1 of a series of incompatible versions of the Hirokazu Tanaka engine used mostly by R&D1 but also a couple other games he composed for. The Tanaka engine is derived from the very first Nintendo NES engine believed to have been written by Yukio Kaneoka which would serve as the progenitor of most of Nintendo's early-mid engines, including those by Tanaka, Koji Kondo, and Akito Nakatsuka. Later versions of the Tanaka engine would be used most notably by Mother and Tetris.
 
-The Metroid sound engine is a very simple and relatively inflexible engine, though not quite to the degree of earlier R&D4 games such as Zelda. It is a hybrid engine in which some parameters are specified in the music data while others are hard-coded in the engine. Unlike more flexible formats, timbre is split between the track header (for per-track specification) and hard-coding (an alternate but far more rigid type of per-track specification), and channel data is limited to notes, rests, and loops.
+The Metroid sound engine is a very simple and relatively inflexible engine, though not quite to the degree of earlier R&D4 games such as The Legend of Zelda. It is a hybrid engine in which some parameters are specified in the music data while others are hard-coded in the engine. Unlike more flexible formats, timbre is split between the track header (for per-track specification) and hard-coding (an alternate but far more rigid type of per-track specification), and channel data is limited to notes, rests, and loops.
 
 Basic Features:
 - Single byte notes and rests, though current note length must be previously defined with an additional byte
 + Hybrid tempo system that mimics staff notation divisive rhythm
-	- 5-octave chromatic scale from A1 (55 Hz) to D#7 (2489 Hz) for square wave (triangle is one octave lower).
-	- 8 note lengths from whole notes through 16th notes with dots for some lengths for all tempos, plus several tempo-specific lengths
+	- 5-octave chromatic scale from A1 (55 Hz) to F7 (2794 Hz) for square wave (triangle is 1 octave lower).
+	- 9 note lengths from whole notes through 16th notes with dots and triplets for some lengths for all tempos, plus several tempo-specific lengths
 	- 3 tempos ranging from 128.6 to 225 BPM
 - 4 channels - square 1, square 2, triangle, noise - each with separate event sequences
 + Limited timbre support
@@ -30,12 +30,11 @@ Some general notes in interpreting this specification:
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
 - Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
-- Code and data for the Metroid engine are spread across many banks, though always mapped to the $8000-$bfff region of memory. To convert addresses to file offsets: file offset = bank * $4000 + address - $7ff0
-- A couple data structures are addressed with 1-based offsets, meaning the addresses given are actually 1 byte before the data for the structure begins. Watch for such notes.
+- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could match 0n). These lists are ordered such that the first matching command is the correct interpretation.
 
 Track Structure
 
-Metroid has a rather unusual structure compared to other games. Rather than consolidate all its music code and data into a single bank and swap to and from that bank when it comes time to update the music each frame, Metroid consolidates all its code and data for an area into a single bank and never switches banks, duplicating code and data needed by multiple areas but not able to fit in the common bank. All of its music code and non-track data is duplicated across all banks containing level data, as are a couple tracks, while other tracks are bank-specific. Fortunately, all cross-bank music code and data is at the same address in each bank (in the $a000-$bfff region).
+Metroid has a rather unusual structure compared to other games. Rather than consolidate all its music code and data into a single bank and swap to and from that bank when it comes time to update the music each frame, Metroid consolidates all its code and data for an area into a single bank and never switches banks, duplicating code and data needed by multiple areas but not able to fit in the common bank. All of its music code and non-track data is duplicated across all banks containing level data, as are a couple tracks, while other tracks are bank-specific. Fortunately, all cross-bank music code and data is at the same address in each bank (in the $a000-$bfff region). To convert addresses to file offsets: file offset = bank * $4000 + address - $7ff0
 
 The $8000-$bfff banks used for different parts of the game:
 	0: Title screen and ending
@@ -56,14 +55,14 @@ Track Header Format:
 +2 byte: FFFF LLLL: Triangle channel note auto-release control. Do the action of the first matching condition:
 	L != 0: Set auto-release to L/4 frames
 	F != 0: Disable auto-release
-	0: Set auto-release to 15 frames
+	0: Dynamic auto-release: silence note 1 frame before the note's end or after 15 frames, whichever is sooner
 +3 byte[2]: Square channel (1 then 2) envelope numbers 1-5 or 0 if none
 +5 word[4]: Channel data start addresses in order of square 1, square 2, triangle, noise, or 0 if none
 
 Example: 0B FF 00 02 03 00 B0 57 B0 C1 B0 2B B1
 0B: Note length table base offset $b (150 BPM)
 FF: Loop track when it reaches the end
-00: Set triangle auto-release to 15 frames
+00: Set dynamic triangle auto-release
 02: Square channel 1 envelope number 2
 03: Square channel 2 envelope number 3
 00 B0: Square channel 1 address $b000
@@ -73,7 +72,7 @@ C1 B0: Triangle channel address $b0c1
 
 Time and Tempo
 
-Note/rest durations in the Metroid engine are frame-based. A master table of somewhat indistinct size (but at least $22 entries) specifies note durations in frames. Each track selects a $10-element window into this table for use by the entire track, and set note length commands select 1 of these lengths. This table is arranged (and used in Metroid music) to provide 3 different tempos with a common set of 8 musical lengths with common indices; various other lengths are available based on the window used for the track, but they are not common between tempos.
+Note/rest durations in the Metroid engine are frame-based. A master table of somewhat indistinct size (but at least $22 entries) specifies note durations in frames. Each track selects a $10-element window into this table for use by the entire track, and set note length commands select 1 of these lengths. This table is arranged (and used in Metroid music) to provide 3 different tempos with a common set of 9 musical lengths with common indices; various other lengths are available based on the window used for the track, but they are not common between tempos.
 
 The master table giving lengths in frames is:
 
@@ -98,13 +97,13 @@ Triplet:                  8*
 
 * Index 8 in all 3 tempos corresponds to a triplet quarter note, though it is rounded (inconsistently, at that) in all but 150 BPM. No apparent correspondence exists among any other indices across all tempos.
 
-Notes on the triangle wave channel are capable of auto-release. Depending on the auto-release setting in the track header, notes may be set to either never auto-release, auto-release after a fixed number of frames (up to 4), or auto-release after 15 frames.
+Notes on the triangle wave channel are capable of auto-release prior to the end of the specified note duration. Depending on the auto-release setting in the track header, notes may be set to either never auto-release, auto-release after a fixed number of frames (up to 4), or dynamic auto-release of notes 1 frame before the end of the note or after 15 frames, whichever is sooner.
 
 Notes and Rests
 
-Metroid uses 2 different key sets, 1 for melodic channels (though triangle channel is 1 octave lower than the square channels), and 1 set of presets for the noise channel. The 2 do have 1 thing in common, however: while the ways key/preset numbers are encoded differs between the two, both use key code 1 as rest.
+Metroid uses 2 different key sets, 1 for melodic channels (though triangle channel is 1 octave lower than the square channels), and 1 set of presets for the noise channel. The 2 do have 1 thing in common, however: while the ways key/preset numbers are encoded differs between the 2, both use key code 1 as rest.
 
-Metroid has a peculiar melodic key set, as the set is unusually cramped even in comparison to other games using the same engine (although Gumshoe's key numbers are stranger still); all other games have more than $40 keys, and are not missing keys from octave 2. The Metroid engine has a maximum of $57 key codes (+ rest), and even higher is possible using an exploit, and if relocated the table could be expanded, though this is not entirely trivial and would need to be done for all banks.
+Metroid has a peculiar melodic key set, as the set is unusually cramped even in comparison to other games using the same engine (although Gumshoe's key numbers are stranger still); all other games have more than $40 keys, and are not missing keys from octave 2. The Metroid engine has a maximum of $57 key codes (+ rest), and even higher is possible using an exploit; and if relocated the table could be expanded, though this is not entirely trivial and would need to be done for all banks.
 
 Key Table:
 
@@ -121,7 +120,7 @@ Oct  C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at B
 
 The octaves listed in the table are for square wave channels, and the triangle channel will be 1 octave lower for each key code. As well, as can be seen from the table, Metroid has a nominal base key of C2, but codes 0-3 are irregular.
 
-Noise codes are peculiar. Rather than being preset numbers, they are 1-based indices into an array of noise presets, each entry being 3 bytes. Metroid has 3 noise presets, and their codes are thus 4, 7, and $a (as previously stated, code 1 is rest).
+Noise codes are peculiar. Rather than being preset numbers, they are 1-based byte-offsets into an array of noise presets, each entry being 3 bytes. Metroid has the following presets (and, as previously stated, code 1 is rest):
 
 Noise Key Table:
 4: Snare tap
@@ -137,7 +136,7 @@ Channel data is quite basic, having just enough commands to be considered a mini
 Channel Data Format:
 00: End of track. Either stop or restart the track when any channel encounters this.
 ff: End loop. If loop counter > 0 decrement and loop, else continue
-cx (11nn nnnn): Begin loop and set loop counter to n - 1 (n is the number of total plays 1-$3e)
+cx (11nn nnnn): Begin loop and set loop counter to n - 1 (n is the number of total plays 1-$3e or 0 is interpreted as $100)
 bL: Set current note length to index L; for triangle channel auto-release is set as described in the auto-release entry of the track header. Due to a quirk of the engine, the set length command must be IMMEDIATELY followed by a note or rest.
 Melodic channels:
 	02: Rest for current note length
@@ -146,15 +145,15 @@ Noise channel:
 	01: Rest for current note length
 	0p: Play noise preset code p (4, 7, or $a) for current note length
 	
-Note that some encodings are ambiguous. Entries in the table should be compared in order, and the first matching interpretation used. As previously stated, any byte immediately following a set length command is interpreted as a note/rest, allowing access to keys normally inaccessible; however, because of the extremely limited key set in Metroid this only (additionally) allows access to key code 0.
+As previously stated, any byte immediately following a set length command is interpreted as a note/rest, allowing access to keys normally inaccessible; however, because of the extremely limited key set in Metroid this only (additionally) allows access to key code 0.
 
 Examples
 
-Triangle Channel (tempo is 128.6 BPM, auto-release is set to 15 frames):
+Triangle Channel (tempo is 128.6 BPM, auto-release is set to dynamic):
 CA: Begin loop
 	n = $a: Set loop counter to 9 (play 10 times in total)
 B0: Set note length
-	L = 0: 16th note (7 frames). Notes will be too short to auto-release.
+	L = 0: 16th note (7 frames). Notes will auto-release after 6 frames.
 2A x3: Notes
 	k = $15: Key A2
 02 x2: Rests
@@ -178,7 +177,7 @@ Metroid has limited support for different timbres in the square wave channels in
 
 Both mechanisms revolve around the ctrl 1 registers, which have the format ddLV vvvv:
 	d: Duty cycle. 0: 12.5%, 1: 25%, 2: 50%, 3: 75%
-	L: Disable length counter and play note forever. This is mostly irrelevant since notes in Metroid are set to play for 127 frames, which is longer than the longest length in the length table.
+	L: Disable length counter and play note forever. This is mostly irrelevant since the length counter in Metroid is set to 127 frames, which is longer than the longest length in the note length table.
 	V: Specifies that v is the volume and not decay rate. Always set.
 	v: The volume
 
@@ -187,7 +186,7 @@ f0: End envelope and silence channel
 ff: End envelope and return ctrl 1 to track default, or $10 if default is 0
 vv: Set ctrl 1 to v | (track default & $f0)
 
-And the 5 Metroid envelopes, showing one character for the volume for each envelope entry except the terminator:
+And the 5 Metroid envelopes, showing 1 character for the volume for each envelope entry except the terminator:
 1 @bcba  (3cca): 1223345678 ff
 2 @bcc5  (3cd5): 245678765 ff
 3 @bccf  (3cdf): 0d97655544 ff
@@ -248,7 +247,7 @@ bef7 byte[$22?]: Note length table in frames
 Code to load the current length for notes:
 BB2B    LDA $BEF7,Y   
 
-Code to set the triangle auto-release length to 15 frames ($3c quarter-frames) when F:L is 0:
+Code to limit the triangle auto-release length to 15 frames ($3c quarter-frames) when in dynamic auto-release mode:
 BBD2    CMP #$3C                 
 BBD4    BCC $BBD8                
 BBD6    LDA #$3C                 
@@ -285,7 +284,7 @@ BA64    STA $ED
 
 Changing the Track Ctrl 1 Values
 
-One section of the begin track process selects the ctrl 1 values for the track by looking up the track number in a jump table and then jumping to the corresponding address. These addresses point to short code snippets that assign hard-coded ctrl 1 values and then jump back to a common point to continue the start process. It is difficult to conceive of any circumstance in which this was a good idea.
+1 section of the begin track process selects the ctrl 1 values for the track by looking up the track number in a jump table and then jumping to the corresponding address. These addresses point to short code snippets that assign hard-coded ctrl 1 values and then jump back to a common point to continue the start process. It is difficult to conceive of any circumstance in which this was a good idea.
 
 bc26 word[8]: Jump table for tracks 0-7
 bc06 word[4]: Jump table for tracks 8-$b
@@ -300,19 +299,17 @@ bc80:    bc96    34    34
 bc83:    bc89    b3    b3
 bc86:    bc9e    f5    f6
 
-Switching tracks between one of these predefined addresses is not too difficult, and requires only changing the corresponding address in the jump tables.
+Switching tracks between 1 of these predefined addresses is not too difficult, and requires only changing the corresponding address in the jump tables.
 
 The next step in difficulty comes from modifying the values themselves. These code snippets take 2 forms, depending on whether both channels' ctrl 1 values are the same or different.
 
 Example code to assign both channels the same value:
-
 BC9A    LDA #$F4                 
 BC9C    BNE $BC8B                
 
 The A register is assigned the value to be used by both, and $bc8b will copy it.
 
 Example code to assign different values to each channel:
-
 BCA4    LDX #$B6                 
 BCA6    LDY #$F6                 
 BCA8    BNE $BC8D                
@@ -329,7 +326,7 @@ BC7D    JMP $BC9A
 BC80    JMP $BC96                
 BC83    JMP $BC89                
 BC86    JMP $BC9E                
-BC89    LDA #$B3  <- one of the code snippets (2 bytes)
+BC89    LDA #$B3  <- 1 of the code snippets (2 bytes)
 BC8B    TAX       <- code to copy A to X and Y for same value snippets (2 bytes)
 BC8C    TAY                      
 BC8D    JSR $B9E4 <- common return point for all snippets ($b bytes)
@@ -353,7 +350,7 @@ So we have a total of $2e bytes to play with between the jump stubs and the code
 
 To change to a table-based system, we'd make all the entries in the jump table point to a single handler which would load the values from a lookup table. The lookup table itself would have to be $c * 2 = $18 bytes. That leaves $18 bytes for the code, which is quite luxurious. Helpfully, the code snippets already clobber A, X, and Y, so we don't even need to preserve them.
 
-One key piece of information not shown in the above code is that these jump stubs are reached with the track number (0-$b) stored at memory address $65e. The full code thus looks like this:
+1 key piece of information not shown in the above code is that these jump stubs are reached with the track number (0-$b) stored at memory address $65e. The full code thus looks like this:
 
 BC77    LDA $065E                
 BC7A    ASL A                    

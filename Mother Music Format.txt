@@ -1,13 +1,13 @@
 MOTHER MUSIC FORMAT
-v0.1
+v0.2
 
 By Justin Olbrantz (Quantam)
 
 The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
 
-The Mother sound engine is revision 4 of the Tanaka-Kaneoka engine dating all the way back to Donkey Kong and many of Nintendo's early games by Research and Development 1; the second revision of this engine would be used for the well-known Metroid and Kid Icarus, and version 4 would take Tanaka and R&D1 through the end of the NES era. Notably, Mother was not developed by Nintendo directly, but by Ape, though it was developed closely with Nintendo and has music composed in part by Tanaka. Apart from Mother, the other hit game to use the Mother engine was the legendary Tetris.
+The Mother sound engine is the final version of the Hirokazu Tanaka engine which was derived from the Yukio Kaneoka engine dating all the way back to Nintendo's earliest NES games by Research and Development 1. An earlier version of the Tanaka engine would be used for the well-known Metroid and Kid Icarus, and the Mother engine would take Tanaka and R&D1 through the end of the NES era. Apart from Mother, other hit games to use the Mother engine include Dr. Mario and the legendary Tetris.
 
-The Tanaka-Kaneoka engines show a clear progression of features culminating in the Mother engine. Most of the awful inflexibility of the Metroid engine previously documented is gone, with new music data-based mechanisms for timbre, tempo, and looping control. The engine appears to take some inspiration from the R&D4 engines such as that of Super Mario Bros. 3, adopting a per-channel version of their block structure. While the Metroid engine was decidedly a hybrid system, mixing music data with hard-coding, only 1 (new) part of the Mother engine is a hybrid: the pitch envelope system. Overall the engine is vastly more flexible than the Metroid engine and highly efficient at eliminating redundancy in music data, but the block system makes the engine vastly (and needlessly, in comparison to a "subroutine" system used in some other engines) more complicated to compose for.
+The Tanaka-Kaneoka engines show a clear progression of features culminating in the Mother engine. Most of the awful inflexibility of the Metroid engine previously documented is gone, with new music data-based mechanisms for timbre, tempo, and looping control. The engine appears to take some inspiration from the R&D4 engines such as that of Super Mario Bros. 3, adopting a per-channel version of their block/playlist structure. While the Metroid engine was decidedly a hybrid system, mixing music data with hard-coding, only 1 (new) part of the Mother engine is a hybrid: the pitch envelope system. Overall the engine is vastly more flexible than the Metroid engine and highly efficient at eliminating redundancy in music data, but the block system makes the engine vastly more complicated to compose for.
 
 Basic Features:
 - Single byte notes and rests, though current note length must be previously defined with an additional byte
@@ -32,19 +32,20 @@ Major Differences with the Metroid Engine:
 - Pitch envelopes
 - Global transpose setting settable by music data
 - Track looping is now per-channel and no longer limited to whole track looping
-- Per-channel block structure allow reuse of data as well as more than 256 bytes per channel
+- Per-channel block structure allows reuse of data as well as more than 256 bytes per channel
 
 Some general notes in interpreting this specification:
 - All word (16-bit) values in the format are little-endian, with the least-significant byte preceding the most-significant, unless noted otherwise.
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
 - Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
+- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could match 0n). These lists are ordered such that the first matching command is the correct interpretation.
 
 Track Structure
 
 At the highest level Mother's track structure is almost identical to Metroid's: a table of offsets into blocks containing the headers for each track; however, the headers contain less metadata and the metadata they do contain (such as tempo and transpose) are now merely the initial values, and may be changed by music data during play. However, due to the amount of music in an RPG like Mother and the self-imposed limitation of 256 byte-large blocks containing track headers, Mother has 2 banks of music, 1 for "low" tracks 1-$18 and the other for "high" tracks $19-$31; it is worth noting that these banks are nearly packed to the gills, with the maximum of $19 tracks per bank being possible with the 256-byte limit.
 
-What is VERY different, however, is what the header's channel data addresses point to. Rather than pointing to the actual music data as in Metroid, they point to a playlist of blocks for the channel. This is an array of 16-bit words that specify the addresses of blocks of music data and in which order they should be played, terminated either by an end of track code or a goto code that specifies the channel should continue from a specified location in the playlist. The playlist performs the function of (infinitely) looping the track (though note that some tracks loop on some channels but eventually end the track on another), reusing blocks of music data like "subroutines" in other engines, and freeing the engine from the Metroid engine's limitation of 256-byte channel data (now each block is limited to 256 bytes); they may even be used for example to have square 1 and square 2 play the same sequence of notes with a delay on 1 channel or different timbre by having different first blocks that then both jump to the same playlist location. However, it is recommended to not use them for local "play x times" loops, as the loop command in channel music data is more efficient for this if the loop entirely fits in a single block.
+What is VERY different, however, is what the header's channel data addresses point to. Rather than pointing to the actual music data as in Metroid, they point to a playlist of blocks for the channel. This is an array of 16-bit words that specify the addresses of blocks of music data and in which order they should be played, terminated either by an end of track code or a goto code that specifies the channel should continue from a specified location in the playlist. The playlist performs the function of (infinitely) looping the track (though note that some tracks loop on some channels but eventually end the track on another), reusing blocks of music data like "subroutines" in other engines, and freeing the engine from the Metroid engine's limitation of 256-byte channel data (now each block is limited to 256 bytes); they may even be used for example to have square 1 and square 2 play the same sequence of notes with a delay on 1 channel or different timbre by having different first blocks that then both jump to the same playlist location. And while it is not recommendable to perform local loops with the playlist as channel music data loops are more efficient for that purpose, the playlist may be used to add additional levels of looping to a track.
 
 Accordingly, the "end of track" 0 command in music data now means "end of block", and the "end of track" command is performed by the playlist. This means that most blocks on all channels will be terminated, however it is still possible for the final blocks of some channels to be unterminated because another channel will end the track before erroneous data is played.
 
@@ -60,7 +61,7 @@ $a000-$bfff: Bank $1d
 Track Header Format:
 	+0 byte: Initial global transpose in modified sign-magnitude format with the format nmmm mmmm. If n is clear the transpose value = +m; if n is set the transpose value = -1 - m. The transpose value must be an even number, as it is 2x the number of semitones and fractional semitones are not supported.
 	+1 byte: Initial note length table offset (implicitly, tempo). See Time and Tempo for a list of possible values.
-	+2 word[4]: Channel data addresses in order of square 1, square 2, triangle, and noise, or a high byte of $ff (canonically $ffff) if none.
+	+2 word[4]: Channel playlist addresses in order of square 1, square 2, triangle, and noise, or a high byte of $ff (canonically $ffff) if none.
 	
 Example
 
@@ -122,7 +123,8 @@ The master table giving lengths in frames is:
 
 When arranged by the base offsets used by the game the table looks like this:
 
-    BPM  16   8   4   2   1   4D   2D  8D  4T   8T  32
+          0   1   2   3    4   5    6   7   8    9   a  b  c  d  e    f
+    BPM  16   8   4   2    1  4D   2D  8D  4T   8T  32
 0  (225): 4   8  16  32   64  24   48  12  10*   5*  2  1
 c  (180): 5  10  20  40   80  30   60  15  12*   6*  3* 2
 18 (150): 6  12  24  48   96  36   72  18  16    8   3  1  4  2  0  144
@@ -141,13 +143,13 @@ Triplet:                  8*    9*
 
 * Triplets and 32nds in some tempos are not whole numbers of frames, and will not properly mix with other lengths. These can either be avoided in those tempos or worked around by varying the lengths of notes of that type by 1 frame or inserting short (e.g. 1 frame) rests so that 3 triplets or 2 32nds add up to the correct whole number of frames. Note critically that all lengths beyond quarter triplet are MISSING for 100 BPM.
 
-Notes on the triangle wave channel are capable of auto-release. Depending on the current auto-release setting specified by the set timbre command on the triangle channel, notes may be set to either never auto-release, auto-release after a fixed number of frames, or auto-release after 15 frames.
+Notes on the triangle wave channel are capable of auto-release prior to the end of the specified note duration. Depending on the current auto-release settings specified by the set timbre command on the triangle channel, notes may be set to either never auto-release, auto-release after a fixed number of frames (up to 8), or dynamic auto-release of notes 1 frame before the end of the note or after 15 frames, whichever is sooner.
 
 Notes and Rests
 
 The Mother engine uses 3 different key sets: 1 for melodic channels (though note that triangle is 1 octave lower than square channels) and 2 for the noise channel (1 for noise presets and 1 for DMC presets).
 
-1 oddity of the Tanaka-Kaneoka engines is that rather than keys being numbered sequentially, key values for everything except DMC presets are actually byte offsets into various lookup tables. For melodic keys that table is the pitch period table which has word-sized elements, resulting in all valid key values being even. For these keys it's easiest to pretend that the bottom bit is not part of the key value and must simply be 0, but the transpose feature added in the Mother engine exposes this detail as the transpose value is added directly to the key value to get the byte offset into the array. While not at all recommendable, it's possible to have both key values and transpose values be odd to produce an even sum that will correctly reference a key pitch. For this document we will pretend that melodic key numbers exclude the bottom bit, though there is 1 place where the truth of the matter must be known.
+1 oddity of the Tanaka-Kaneoka engines is that rather than keys being numbered sequentially, key values for everything except DMC presets are actually byte offsets into various lookup tables (this made somewhat more sense for the Kaneoka engine and Kondo engine derived from it). For melodic keys that table is the pitch period table which has word-sized elements, resulting in all valid key values being even. For these keys it's easiest to pretend that the bottom bit is not part of the key value and must simply be 0, but the transpose feature added in the Mother engine exposes this detail as the transpose value is added directly to the key value to get the byte offset into the array. While not at all recommendable, it's possible to have both key values and transpose values be odd to produce an even sum that will correctly reference a key pitch. For this document we will pretend that melodic key numbers exclude the bottom bit, though there is 1 place where the truth of the matter can't be hidden.
 
 The melodic key set has a nominal base key of A#1 for all known games, though for unknown and possibly historical reasons its key 0 is A1 and key 1 is rest. While the engine is capable of using key numbers 2-$4d and $50-$57 (additional ranges with an exploit), no known game uses the entire available range.
 
@@ -166,7 +168,7 @@ Oct  C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at B
 
 Like the true way melodic keys work, noise codes are indices into an array of noise presets, though here they are 1-based offsets into entries of 3 bytes. Rest is code 1, and some games like Mother exploit the fact that only the first byte of the 3 is necessary to silence the channel to place the first preset at 2. All together, Mother supports the following presets: 2, 4, 7, $a, $d, $10, $13, $16, $19, $1c.
 
-Finally there are the DMC presets. Each byte-sized key/rest command on the noise channel is actually 2 commands in 1: the low bits contain a noise key code and the high bits contain a DMC key code. There are actually 2 variants of the Mother engine, depending on whether 2 bits or 3 are dedicated to the DMC code. Mother uses 2 bits and is limited to 3 DMC presets, although it only uses 2. In both versions of the engine DMC key code 0, as well as any other unused codes, is rest.
+Finally there are the DMC presets. Each byte-sized key/rest command on the noise channel is actually 2 commands in 1: the low bits contain a noise preset code and the high bits contain a DMC preset code. There are actually 2 variants of the Mother engine, depending on whether 2 bits or 3 are dedicated to the DMC code. Mother uses 2 bits and is limited to 3 DMC presets, although it only uses 2. In both versions of the engine DMC key code 0, as well as any other unused codes, is rest for the DMC channel.
 
 DMC Presets:
 1: Kick/bass drum
@@ -181,8 +183,8 @@ Channel Data Format:
 9c nmmm mmmm: Set global transpose. If n is clear the transpose value = +m; if n is set the transpose value = -1 - m. The transpose value must be an even number, as it is 2x the number of semitones and fractional semitones are not supported.
 9e tt: Set global note length table offset (implicitly, tempo) to t
 ff: End loop. If loop counter is not 0 decrement and loop, else continue. MUST be in the same block as its start loop command.
-bL: Set current channel note length code to L. For triangle set linear counter according to current triangle auto-release settings.
-cL (11nn nnnn): Begin loop and set number of times to play loop to n (0 is interpreted as 256)
+bL: Set current channel note length code to L. For triangle set linear counter according to current triangle auto-release settings. Must be IMMEDIATELY followed by a note/rest.
+cL (11nn nnnn): Begin loop and set number of times to play loop to n (1-$3e or 0 is interpreted as $100)
 
 Melodic Channels Only:
 9f pppx xxxx CC: Set channel timbre. MUST NOT be used on noise channel. Set pitch envelope to p (0 if none) and base ctrl 1 value to C.
@@ -196,7 +198,7 @@ Melodic Channels Only:
 		n: The number of quarter-frames to play notes before auto-release.
 	p and x set the auto-release settings:
 		x != 0: Set auto-release time to x quarter-frames
-		p is 0-1 or 6-7: Set auto-release time to 15 frames
+		p is 0-1 or 6-7: Set dynamic auto-release
 		p is 2-5: Disable auto-release
 02: Rest for current note length. Acts as a rest if EITHER the unmodified byte OR byte + transpose value is 02. E.g. the command 9C 83 would set a transpose value of -2 semitones, and a 06 "note" would then resolve to a rest (6 - 4 = 2).
 kkkk kkk0: Play key k + transpose value/2 for current note length. This sum cannot be 1.
@@ -210,7 +212,7 @@ DDpp pppp: Perform noise channel command p and DMC channel command D for current
 		D = 1-2: Play DMC preset D
 		Else: DMC channel rests
 		
-Note that some encodings are ambiguous. Entries in the table should be compared in order, and the first matching interpretation used. As previously stated, any byte immediately following a set length command is interpreted as a note/rest, allowing access to keys with the same values as other commands; however, as no known game uses keys outside the normally accessible range, this only (additionally) allows access to key code 0.
+As previously stated, any byte immediately following a set length command is interpreted as a note/rest, allowing access to keys with the same values as other commands; however, as no known game uses keys outside the normally accessible range, this only (additionally) allows access to key code 0.
 
 Some notes on the set timbre command are in order. The ctrl 1 register ($4000, $4004, etc.) value specified is the base value for the channel, and can be modified in a couple ways. For square wave channels, if the channel uses a volume envelope the bottom 4 bits of this value (the volume field) will be replaced by the current volume from the envelope. However the initially specified volume is retained, and will be restored if the envelope ends by restoring the base volume.
 
@@ -229,11 +231,11 @@ Square channel (current note length base offset is +4c: 90 BPM):
 D2: Begin loop
 	n = $12: Play loop $12 times
 B2: Set note length
-	L = 2: Quarter note ($40 frames)
+	L = 2: Quarter note (40 frames)
 1A x3: Notes
 	k = $d: Key B2
 B1: Set note length
-	L = 1: 8th note ($20 frames)
+	L = 1: 8th note (20 frames)
 1A: Note
 	k = $d: Key B2
 1C: Note
@@ -242,23 +244,22 @@ FF: End loop
 
 Triangle channel of same track:
 9F A0 00: Set timbre: pitch envelope, auto-release settings, and base ctrl 1
-	1:p = 5: Pitch envelope 5. Auto-release disabled.
 	1:x = 0: No explicit auto-release length
-	2:F = 0: Auto-release enabled
-	2:n = 0: Auto-release after 1 quarter-frame
+	1:p = 5: Pitch envelope 5. Auto-release disabled.
+	2:F, 2:n: Ignored since set note length is done before notes are played
 B7: Set note length. Also overwrites F and n from previous command with auto-release settings from p and x: disable auto-release.
-	L = 7: Dotted 8th note ($30 frames)
+	L = 7: Dotted 8th note (30 frames)
 24: Note
 	k = $12: Key E2 (triangle is 1 octave lower)
 B0: Set note length
-	L = 0: 16th note
+	L = 0: 16th note (10 frames)
 02: Rest
 	
 Noise channel of same track:
 D4: Begin loop
 	n = $14: Play loop $14 times
 B2: Set note length
-	L = 2: Quarter note ($40 frames)
+	L = 2: Quarter note (40 frames)
 41: Note event
 	D = 1: Play DMC preset 1 (kick drum)
 	n = 1: Noise channel rests
@@ -279,25 +280,33 @@ Square channel:
 	m = $d: Transpose value = -1 - $d = -$e (-7 semitones)
 00: End of block
 
-Triangle channel (contrived):
+Triangle channel:
+9F 0A 00: Set timbre: pitch envelope, auto-release settings, and base ctrl 1
+	1:x = $a: Set duration until auto-release to $a quarter-frames
+	1:p = 0: No pitch envelope
+	2:F, 2:n: Ignored since set note length is done before notes are played
+B3: Set note length
+	L = 3: Half note (56 frames at current tempo). Notes will auto-release after 10 quarter-frames.
+...
 9F 00 00: Set timbre: pitch envelope, auto-release settings, and base ctrl 1
-	1:p = 0: No pitch envelope. Do NOT disable auto-release.
-	1:x = 0: No explicit auto-release duration. Use default of 15 frames.
+	1:x = 0: No explicit auto-release length
+	1:p = 0: No pitch envelope. Do NOT disable auto-release; result: dynamic auto-release.
 	2:F, 2:n: Ignored since set note length is done before notes are played
-9F 0F 00: Set timbre: pitch envelope, auto-release settings, and base ctrl 1
-	p = 0: No pitch envelope. Do NOT disable auto-release.
-	x = $f: Auto-release after $f quarter-frames
-	2:F, 2:n: Ignored since set note length is done before notes are played
+B3: Set note length
+	L = 3: Half note (48 frames). Notes will auto-release after 15 frames.
+...
+B1: Set note length
+	L = 1: 8th note (12 frames). Notes will auto-release after 11 frames.
 	
 Timbre and Envelopes
 
 Depending on the channel, up to 3 types of timbre control exist in the Mother engine: the ctrl 1 register (especially the duty cycle for square wave channels), volume envelopes, and pitch envelopes, all of which are set by the set timbre command.
 
-Volume envelopes in the Mother engine are fairly short non-looping sequences of volume values that end either by restoring the base volume for the channel (for attack envelopes) or silencing the channel (decay envelopes). To reduce the space required, the Mother engine packs 2 volume values into each byte of the envelope. The engine theoretically supports up to $1f volume envelopes, but Mother has $1b envelopes.
+Volume envelopes in the Mother engine are fairly short non-looping sequences of volume values that end either by restoring the base volume for the channel or silencing the channel. To reduce the space required, the Mother engine packs 2 volume values into each byte of the envelope. The engine theoretically supports up to $1f volume envelopes, but Mother has $1b envelopes.
 
 Examples
 
-A8 76 FF: Short decay envelope into sustain. Frames +0 to +3 will have the volume values $a, 8, 7, 6, then the channel base volume will be used.
+A8 76 FF: Short decay envelope into sustain. Frames 0-3 will have the volume values $a, 8, 7, 6, then the channel base volume will be used.
 
 91 91 91 91 91 91 91 91 91 91 F0: Odd short, non-sustaining, 30 Hz tremolo envelope of center 5 and depth (center to peak) 4 that silences the channel after 20 frames (1/3 sec). 30 Hz is above the limit of hearing, so this will likely have a peculiar frequency modulation effect.
 
@@ -307,7 +316,7 @@ A basic description of the pitch envelopes is as follows, showing the envelope n
 
 E  F  Description
 1: 0  6 Hz vibrato with depth (center to peak) of 2 period units
-2: 1  Slides period from 0 to -10 over 10 frames, performs 15 Hz depth 1 vibrato for 2 cycles, then sustains a constant -10 period offset
+2: 1  Slides period from 0 to -10 over $10 frames, performs 15 Hz depth 1 vibrato for 2 cycles, then sustains a constant -10 period offset
 3: 1  Fixed -2 period offset
 4: 1  Pitch slide from +9 to 0 period offset followed by 6 Hz depth 1.5 vibrato. Is NOT applied to key $23.
 5: 1  6 Hz depth 2 vibrato that has a fade-in period of $21 frames
@@ -375,7 +384,7 @@ Track bank 0: Header offset table 903e, header block base 906f:
     Square 2 @a173: | a207 a22c a207 a254 a272 a28c a272 a2a0
     Triangle @a18d: | a197 a197 a1d0
 
-   b Holy Loly Mountain @90d3:   +0  +4c  a2c4  a2ca  a2d0  a2d6
+   b Mount Itoi @90d3:   +0  +4c  a2c4  a2ca  a2d0  a2d6
     Square 1 @a2c4: | a2dc
     Square 2 @a2ca: | a2f6
     Triangle @a2d0: | a33f
@@ -568,7 +577,7 @@ Track bank 1: Header offset table 9056, header block base 915f:
   2f Phone @923b:   +0  +18  ffff  b57b  ffff  ffff
     Square 2 @b57b: | b581
 
-  30 Easter @9245:   +0  +28  b589  b58f  b595  ffff
+  30 Youngtown @9245:   +0  +28  b589  b58f  b595  ffff
     Square 1 @b589: | b5a1
     Square 2 @b58f: | b5cd
     Triangle @b595: | b602
@@ -608,6 +617,7 @@ Reading the table:
 Track 1 is very special. Its triangle channel points into RAM, as the playlist is constructed dynamically. This is the Eight Melodies track, and it is made up of 8 pieces of the melody (the inner 8 blocks). Depending on whether a piece has been picked up in game, the block will either be as shown here or a placeholder beep.
 
 The base (no pieces acquired) version of this track is copied from 1c:8217 ($a words) during initialization. Game-specific code in the begin track process then selects either the melody piece from 1c:822b (8 words) or the placeholder beep (block address $9299) for each piece:
+
 823B    LDA $761E                
 823E    STA $B0                  
 8240    LDY #$00                 
@@ -637,7 +647,7 @@ The base (no pieces acquired) version of this track is copied from 1c:8217 ($a w
 Code to load the current length for notes:
 8CAA    LDA $8FD6,Y              
 
-Code to set the triangle auto-release length to 15 frames ($3c quarter-frames) when F:L is 0:
+Code to limit the triangle auto-release length to 15 frames ($3c quarter-frames) when in dynamic auto-release mode:
 8D73    CMP #$3C                 
 8D75    BCC $8D79                
 8D77    LDA #$3C                 
