@@ -1,5 +1,5 @@
 FINAL FANTASY III (NES) SOUND ENGINE FORMAT
-v0.3
+v1.0
 
 By Justin Olbrantz (Quantam)
 
@@ -53,6 +53,7 @@ Some general notes in interpreting this specification:
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
 - Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
+- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could match 0n). These lists are ordered such that the first matching command is the correct interpretation.
 - A wave's "period" is inversely proportionate to its frequency; in the NES the square wave channel's period = 1789773/16 / frequency (triangle channel is 1 octave lower for the same period), and the value actually written to the hardware is 1 less than this. Here "pitch" is used as proportionate to key number, is what humans perceive, and frequency doubles (period halves) with each pitch increase of 1 octave. As such "linear period", "linear frequency", and "linear pitch" are all very different things, and linear pitch is what sounds linear to the ear.
 
 MUSIC FORMAT
@@ -249,10 +250,10 @@ Pairs show period offset on the left side and length on the right. Loops are ind
 15 (f) @9fa2 (6dfb2): -7:1  +7:1  +7:2  -2:1  -3:1  -3:1  -3:1  -3:1  +2:1  +2:1  +2:1  -2:1  -2:1  -2:1  +2:1  +2:1  +2:1  -2:1  -2:1  -2:1  +2:1  +2:1  +2:1  -2:1  -2:1  -2:1  +2:1  +2:1  +2:1  +2:1  +2:1  +2:1  +2:1
 
 Code to load the address of a pitch envelope:
-86DE    LDA $9EAB,Y              
-86E1    STA $D8                  
-86E3    LDA $9EAC,Y              
-86E6    STA $D9                  
+86DE    LDA $9EAB,Y
+86E1    STA $D8
+86E3    LDA $9EAC,Y
+86E6    STA $D9
 
 Volume Envelopes
 
@@ -473,10 +474,10 @@ Volume Envelope 40 (28):
 A @9e83 (6de93):  7  7  9 11 13 15 15 15 15 10  5 10 15 10  5  0  5 10 15 10  5  0  0  5 10 15 10  5  0  0  0  5 10 15 10  5  0
 
 Code to load a volume envelope table address:
-85BB    LDA $9A7C,Y              
-85BE    STA $D6                  
-85C0    LDA $9A7D,Y              
-85C3    STA $D7                  
+85BB    LDA $9A7C,Y
+85BE    STA $D6
+85C0    LDA $9A7D,Y
+85C3    STA $D7
 
 SOUND EFFECT FORMAT
 
@@ -594,68 +595,68 @@ First, an array of 4 bytes gives the bank numbers to be loaded at $a000:
 
 The bank is switched to based on this table and the track number by the function at 36:899f ($6c9af):
 
-899F    LDA #$07                 
-89A1    STA $8000                
-89A4    LDX #$00                 
-89A6    LDA $7F43                
-89A9    CMP #$19                 
-89AB    BCC $89B8                
-89AD    INX                      
-89AE    CMP #$2B                 
-89B0    BCC $89B8                
-89B2    INX                      
-89B3    CMP #$3B                 
-89B5    BCC $89B8                
-89B7    INX                      
-89B8    LDA $89BF,X              
-89BB    STA $8001                
-89BE    RTS                      
-	
+899F    LDA #$07
+89A1    STA $8000
+89A4    LDX #$00
+89A6    LDA $7F43
+89A9    CMP #$19
+89AB    BCC $89B8
+89AD    INX
+89AE    CMP #$2B
+89B0    BCC $89B8
+89B2    INX
+89B3    CMP #$3B
+89B5    BCC $89B8
+89B7    INX
+89B8    LDA $89BF,X
+89BB    STA $8001
+89BE    RTS
+
 Finally, the locations of the track tables are specified by the following code at 36:8a00 ($6CA10):
 
-8A00    LDA $7F43                
-8A03    CMP #$19                 
-8A05    BCC $8A0E                
-8A07    CMP #$2B                 
-8A09    BCS $8A1D                
-8A0B    SEC                      
-8A0C    SBC #$19                 
-8A0E    ASL A                    
-8A0F    TAX                      
-8A10    LDA $A000,X              
-8A13    STA $D8                  
-8A15    LDA $A001,X              
-8A18    STA $D9                  
-8A1A    JMP $8A57                
-8A1D    CMP #$37                 
-8A1F    BCS $8A33                
-8A21    SEC                      
-8A22    SBC #$2B                 
-8A24    ASL A                    
-8A25    TAX                      
-8A26    LDA $8C77,X              
-8A29    STA $D8                  
-8A2B    LDA $8C78,X              
-8A2E    STA $D9                  
-8A30    JMP $8A57                
-8A33    CMP #$3B                 
-8A35    BCS $8A49                
-8A37    SEC                      
-8A38    SBC #$37                 
-8A3A    ASL A                    
-8A3B    TAX                      
-8A3C    LDA $B3AE,X              
-8A3F    STA $D8                  
-8A41    LDA $B3AF,X              
-8A44    STA $D9                  
-8A46    JMP $8A57                
-8A49    SBC #$3B                 
-8A4B    ASL A                    
-8A4C    TAX                      
-8A4D    LDA $B400,X              
-8A50    STA $D8                  
-8A52    LDA $B401,X              
-8A55    STA $D9                  
+8A00    LDA $7F43
+8A03    CMP #$19
+8A05    BCC $8A0E
+8A07    CMP #$2B
+8A09    BCS $8A1D
+8A0B    SEC
+8A0C    SBC #$19
+8A0E    ASL A
+8A0F    TAX
+8A10    LDA $A000,X
+8A13    STA $D8
+8A15    LDA $A001,X
+8A18    STA $D9
+8A1A    JMP $8A57
+8A1D    CMP #$37
+8A1F    BCS $8A33
+8A21    SEC
+8A22    SBC #$2B
+8A24    ASL A
+8A25    TAX
+8A26    LDA $8C77,X
+8A29    STA $D8
+8A2B    LDA $8C78,X
+8A2E    STA $D9
+8A30    JMP $8A57
+8A33    CMP #$3B
+8A35    BCS $8A49
+8A37    SEC
+8A38    SBC #$37
+8A3A    ASL A
+8A3B    TAX
+8A3C    LDA $B3AE,X
+8A3F    STA $D8
+8A41    LDA $B3AF,X
+8A44    STA $D9
+8A46    JMP $8A57
+8A49    SBC #$3B
+8A4B    ASL A
+8A4C    TAX
+8A4D    LDA $B400,X
+8A50    STA $D8
+8A52    LDA $B401,X
+8A55    STA $D9
 
 Sound Effect Table
 

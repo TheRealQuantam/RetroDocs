@@ -1,5 +1,5 @@
 FINAL FANTASY II (NES) MUSIC FORMAT
-v0.2
+v1.0
 
 By Justin Olbrantz (Quantam)
 
@@ -251,10 +251,10 @@ Track   Name                     HdrA  Sq1A  Sq1FO  Sq2A  Sq2FO  TriA  TriFO
 30 (1e) Sound Effect 5           bce2: bce8 (37cf8) ffff         ffff
 
 The code that accesses the track table:
-986E    LDA $9E0D,X              
-9871    STA $C8                  
-9873    LDA $9E0E,X              
-9876    STA $C9                  
+986E    LDA $9E0D,X
+9871    STA $C8
+9873    LDA $9E0E,X
+9876    STA $C9
 
 Volume Envelopes
 

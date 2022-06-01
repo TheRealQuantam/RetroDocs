@@ -1,5 +1,5 @@
 SUPER MARIO BROS. 3 MUSIC FORMAT
-v0.2
+v1.0
 
 By Justin Olbrantz (Quantam)
 
@@ -14,7 +14,7 @@ Second, R&D4 uses a track format unlike anything I've seen from other companies 
 Basic Features:
 - Single byte notes and rests, though current note length must be previously defined with an additional byte
 + Staff notation style divisive rhythm system
-	- 5-octave chromatic scale from A#1 (58.27 Hz) to D7 (2349 Hz) for square wave (triangle is one octave lower).
+	- 5-octave chromatic scale from A#1 (58.27 Hz) to D7 (2349 Hz) for square wave (triangle is 1 octave lower).
 	- 13 note lengths from whole notes through 16th notes with dots and triplets for some lengths for all tempos, plus several tempo-specific lengths
 	- 10 tempos ranging from 112.5 to 450 BPM
 - 5 channels - square 1, square 2, triangle, noise, and DMC - each with separate event sequences
@@ -34,21 +34,22 @@ Some general notes in interpreting this specification:
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
 - Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
+- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could match 0n). These lists are ordered such that the first matching command is the correct interpretation.
 - A wave's "period" is inversely proportionate to its frequency; in the NES the square wave channel's period = 1789773/16 / frequency (triangle channel is 1 octave lower for the same period), and the value actually written to the hardware is 1 less than this. Here "pitch" is used as proportionate to key number, is what humans perceive, and frequency doubles (period halves) with each pitch increase of 1 octave. As such "linear period", "linear frequency", and "linear pitch" are all very different things, and linear pitch is what sounds linear to the ear.
 
 Track Format
 
 Tracks are formatted in a 4-level hierarchical structure.
 
-At the highest level is the track table. Each track entry consists of three values (though in fact it's actually three parallel arrays of values): first block index, last block index, and loop block index, which define which blocks belong to the track and how to loop at the end of the track. However, as block headers (to be described shortly) are ALSO packed into 256-byte blocks, there are in fact 2 track tables needed to hold all the tracks for the game, which are here referred to as bank 1 (or the "low" bank) and bank 2 (the "high" bank); note that this use of "bank" is distinct from the ROM bank, and the two meanings generally do not coincide.
+At the highest level is the track table. Each track entry consists of 3 values (though in fact it's actually 3 parallel arrays of values): first block index, last block index, and loop block index, which define which blocks belong to the track and how to loop at the end of the track. However, as block headers (to be described shortly) are ALSO packed into 256-byte blocks, there are in fact 2 track tables needed to hold all the tracks for the game, which are here referred to as bank 1 (or the "low" bank) and bank 2 (the "high" bank); note that this use of "bank" is distinct from the ROM bank, and the 2 meanings generally do not coincide.
 
-The track block indices index into the second level of structure: the block offset table. This table is an array of bytes which specify the location of each block header within the block of block headers (*cough*); it is because these are byte-sized offsets within the block that there can only be so many block headers in said block, requiring two different track tables and likewise two different track offset tables. This table also doubles as the playlist of blocks: a track begins at the specified first block and proceeds sequentially through this table until it finishes playing the specified last block, at which point the track either ends or loops back to the specified loop block.
+The track block indices index into the second level of structure: the block offset table. This table is an array of bytes which specify the location of each block header within the block of block headers (*cough*); it is because these are byte-sized offsets within the block that there can only be so many block headers in said block, requiring 2 different track tables and likewise 2 different track offset tables. This table also doubles as the playlist of blocks: a track begins at the specified first block and proceeds sequentially through this table until it finishes playing the specified last block, at which point the track either ends or loops back to the specified loop block.
 
-The first 7 entries in the bank 1 block offset table are fanfares. Fanfares are short, non-looping, single-block tracks that interrupt side-scrolling background music to play in events such as death or level completion and the prior track is resumed afterwards (though the restart mechanism only supports bank 2 tracks and bank 1 tracks 9 and $a). Fanfares 1-7 are mapped directly to block offset entries 1-7 in bank 1, and have no separate track table. Fanfare 6 is the "time is running out" fanfare, and is hard-coded in the engine to increase the tempo of the track it resumes to by one level (see the list of tempos) until the end of that track.
+The first 7 entries in the bank 1 block offset table are fanfares. Fanfares are short, non-looping, single-block tracks that interrupt side-scrolling background music to play in events such as death or level completion and the prior track is resumed afterwards (though the restart mechanism only supports bank 2 tracks and bank 1 tracks 9 and $a). Fanfares 1-7 are mapped directly to block offset entries 1-7 in bank 1, and have no separate track table. Fanfare 6 is the "time is running out" fanfare, and is hard-coded in the engine to increase the tempo of the track it resumes to by 1 level (see the list of tempos) until the end of that track.
 
 The third layer of structure, then, are the block headers. These headers specify 3 key pieces of information: the address of the block, the tempo of the block (R&D4 engines have no explicit commands to set the tempo, only the value in the block header), and the starting locations of the square 1, triangle, noise, and DMC channel data within the block; square 2 is the master channel and is always located at the very beginning of the block.
 
-This leaves a small window for shenanigans. It might occasionally be useful to share data from specific channels between blocks; this is done in 1 track from SMB3, for instance. This is possible in a very limited way: it is possible for two block headers to refer to the same block data, but provide different tempo or channel data offsets. This requires careful layout of data as all data used by a block header be in a 256-byte window (we'll call it a virtual block). This is especially tricky since the block address also specifies the square 2 data location, requiring the square 2 data to always precede the data for the other channels for all virtual blocks and the offsets to the other channels to be relative to the start of the square 2 channel.
+This leaves a small window for shenanigans. It might occasionally be useful to share data from specific channels between blocks; this is done in 1 track from SMB3, for instance. This is possible in a very limited way: it is possible for 2 block headers to refer to the same block data, but provide different tempo or channel data offsets. This requires careful layout of data as all data used by a block header be in a 256-byte window (we'll call it a virtual block). This is especially tricky since the block address also specifies the square 2 data location, requiring the square 2 data to always precede the data for the other channels for all virtual blocks and the offsets to the other channels to be relative to the start of the square 2 channel.
 
 However, the reason the square 2 channel is called the master channel goes beyond its location within the block: the square 2 channel also determines the duration of the block, and when the square 2 channel data for a block ends, so too does the block. The effect of shorter durations between channels varies by channel. The square 1 and triangle channels MUST be the same duration as the square 2 channel. But for the noise and DMC channels, given how common it is to compose track with short, repetitive drum loops underneath more lengthy melodies, the noise and DMC channel data will be looped infinitely until the block is ended by the square 2 master channel.
 
@@ -171,7 +172,7 @@ The preset list for the DMC channel is as follows:
 	
 Channel Data Format
 
-Compared to other engines, and even compared to the track structure, channel data is extremely simple. The format has the same basic structure but differs slightly between channels, but the basic 3 commands are the same: play note, rest, and set note attributes, which sets the length for subsequent notes/rests and for the square channels the timbre. The square channels additionally have the ability to perform portamento between two notes, but this is limited to rising pitch.
+Compared to other engines, and even compared to the track structure, channel data is extremely simple. The format has the same basic structure but differs slightly between channels, but the basic 3 commands are the same: play note, rest, and set note attributes, which sets the length for subsequent notes/rests and for the square channels the timbre. The square channels additionally have the ability to perform portamento between 2 notes, but this is limited to rising pitch.
 
 Square Channel Data Format:
 00: Channel-specific:
@@ -235,7 +236,7 @@ Triangle Channel (the tempo for this block is 3: 150 BPM:
 88: Set length
 	L = 8: Quarter note, 24 frames at this tempo. Linear counter will be set to $50: ~20 frames until auto-release.
 26: Note
-	k = $13: Key G2 (triangle is one octave lower)
+	k = $13: Key G2 (triangle is 1 octave lower)
 8C: Set length
 	L = $c: Whole note, 96 frames at this tempo. Linear counter will be set to $ff: no auto-release.
 3C: Note
@@ -335,25 +336,25 @@ Only entries 0-$c of each tempo are standardized while $d-$f are odd values, mos
 * indicates that these tempo/length combinations are actually used in game. Length $d for tempo 5 is only ever used on the DMC channel, and occurs in pairs with length 2 (8T) to form a combined half-note.
 
 Code to read the note length from the table (bank $1f):
-E345    LDA $E874,Y              
+E345    LDA $E874,Y
 
 Code to assign the triangle linear counter value based on the note length in frames:
-E696    CMP #$0A                 
-E698    BCC $E6A6                
-E69A    CMP #$13                 
-E69C    BCC $E6AA                
-E69E    CMP #$25                 
-E6A0    BCS $E6AE                
-E6A2    LDA #$50                 
-E6A4    BNE $E6B4                
-E6A6    LDA #$18                 
-E6A8    BNE $E6B4                
-E6AA    LDA #$20                 
-E6AC    BNE $E6B4                
-E6AE    LDA #$FF                 
-E6B0    BNE $E6B4                
-E6B2    LDA #$80                 
-E6B4    STA TrgLinear_4008       
+E696    CMP #$0A
+E698    BCC $E6A6
+E69A    CMP #$13
+E69C    BCC $E6AA
+E69E    CMP #$25
+E6A0    BCS $E6AE
+E6A2    LDA #$50
+E6A4    BNE $E6B4
+E6A6    LDA #$18
+E6A8    BNE $E6B4
+E6AA    LDA #$20
+E6AC    BNE $E6B4
+E6AE    LDA #$FF
+E6B0    BNE $E6B4
+E6B2    LDA #$80
+E6B4    STA TrgLinear_4008
 
 Square Channel Timbre Envelopes
 
@@ -417,24 +418,24 @@ Timbre 7 @b3a1 (393b1):
   Volume:     ba98765432111111111111111111111111111111111111110000000000000000
 
 Code to set the initial index in an envelope (i.e. the envelope length):
-E756    CMP #$13                 
-E758    BCC $E75E                
-E75A    LDA #$3F                 
-E75C    BNE $E760                
-E75E    LDA #$16                 
+E756    CMP #$13
+E758    BCC $E75E
+E75A    LDA #$3F
+E75C    BNE $E760
+E75E    LDA #$16
 
 Code to read an envelope address:
-E78E    CMP #$13                 
-E790    BCC $E79E                
-E792    LDA $E765,X              
-E795    STA $71                  
-E797    LDA $E766,X              
-E79A    STA $72                  
-E79C    BNE $E7A8                
-E79E    LDA $E775,X              
-E7A1    STA $71                  
-E7A3    LDA $E776,X              
-E7A6    STA $72                  
+E78E    CMP #$13
+E790    BCC $E79E
+E792    LDA $E765,X
+E795    STA $71
+E797    LDA $E766,X
+E79A    STA $72
+E79C    BNE $E7A8
+E79E    LDA $E775,X
+E7A1    STA $71
+E7A3    LDA $E776,X
+E7A6    STA $72
 
 Track, Fanfare, and Block Tables
 
@@ -592,21 +593,21 @@ Code to load the block indices for a track (bank $1f):
 E417    LDA $A86C,Y
 E41A    STA $7AE0  
 E41D    LDA $A87B,Y
-E420    CLC        
-E421    ADC #$02   
+E420    CLC
+E421    ADC #$02
 E423    STA $7AE1  
 E426    LDA $A88A,Y
-E429    STA $7AE2  
+E429    STA $7AE2
 
 Code to load the block header offset and then load the parameters from the header:
 E45A    LDA $A73F,Y
-E45D    TAY        
+E45D    TAY
 E45E    LDA $A76C,Y
 E461    STA $04FD  
 E464    LDA $A76D,Y
-E467    STA $6B    
+E467    STA $6B
 E469    LDA $A76E,Y
-E46C    STA $6C    
+E46C    STA $6C
 E46E    LDA $A76F,Y
 E471    STA $04D0  
 E474    LDA $A770,Y
@@ -616,36 +617,36 @@ E47D    STA $04D1
 E480    STA $07F3  
 E483    LDA $A772,Y
 E486    STA $04D2  
-E489    STA $04DE  
- 
+E489    STA $04DE
+
 Bank 2 Track Structures
 
 Code to load the block indices for a track:
-E388    LDA $B52F,Y              
-E38B    STA $7AE0                
-E38E    LDA $B53B,Y              
-E391    CLC                      
-E392    ADC #$02                 
-E394    STA $7AE1                
-E397    LDA $B547,Y              
-E39A    STA $7AE2                
+E388    LDA $B52F,Y
+E38B    STA $7AE0
+E38E    LDA $B53B,Y
+E391    CLC
+E392    ADC #$02
+E394    STA $7AE1
+E397    LDA $B547,Y
+E39A    STA $7AE2
 
 Code to load the block header offset and then load the parameters from the header:
-E3B6    LDA $B3FF,Y              
-E3B9    TAY                      
-E3BA    LDA $B42D,Y              
-E3BD    STA $04FD                
-E3C0    LDA $B42E,Y              
-E3C3    STA $6B                  
-E3C5    LDA $B42F,Y              
-E3C8    STA $6C                  
-E3CA    LDA $B430,Y              
-E3CD    STA $04D0                
-E3D0    LDA $B431,Y              
-E3D3    STA $04FF                
-E3D6    LDA $B432,Y              
-E3D9    STA $04D1                
-E3DC    STA $07F3                
-E3DF    LDA $B433,Y              
-E3E2    STA $04D2                
-E3E5    STA $04DE                
+E3B6    LDA $B3FF,Y
+E3B9    TAY
+E3BA    LDA $B42D,Y
+E3BD    STA $04FD
+E3C0    LDA $B42E,Y
+E3C3    STA $6B
+E3C5    LDA $B42F,Y
+E3C8    STA $6C
+E3CA    LDA $B430,Y
+E3CD    STA $04D0
+E3D0    LDA $B431,Y
+E3D3    STA $04FF
+E3D6    LDA $B432,Y
+E3D9    STA $04D1
+E3DC    STA $07F3
+E3DF    LDA $B433,Y
+E3E2    STA $04D2
+E3E5    STA $04DE
