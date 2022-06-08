@@ -1,5 +1,5 @@
 METROID MUSIC FORMAT
-v0.3
+v1.0
 
 By Justin Olbrantz (Quantam)
 
@@ -44,7 +44,7 @@ The $8000-$bfff banks used for different parts of the game:
 	4: Kraid's lair
 	5: Ridley's lair
 
-Metroid has 12 music tracks, the details of which can be found in Additional Tables. Most importantly, the track header offset table is located at $bbfa. This array specifies the offset of the track headers within the track header block at $bd31. Note that while the order of tracks is universal, track headers potentially differ between banks and track headers are only guaranteed to contain the correct data for tracks that exist in the bank (sometimes headers have obviously invalid channel data addresses for tracks that reside in a different bank).
+Metroid has 12 music tracks, the details of which can be found in Additional Tables. Most importantly, the track header offset table is located at $bbfa. This array of bytes specifies the offset of the track headers within the track header block at $bd31. Note that while the order of tracks is universal, track headers potentially differ between banks and track headers are only guaranteed to contain the correct data for tracks that exist in the bank (sometimes headers have obviously invalid channel data addresses for tracks that reside in a different bank).
 
 Track Header Format:
 +0 byte: 000t tttt: Note length table base offset t. Implicitly defines the tempo.
@@ -195,7 +195,9 @@ And the 5 Metroid envelopes, showing 1 character for the volume for each envelop
 
 The intent of envelopes is to specify the volume via envelope while the d, L, and V fields are specified by the track default. However, this is not enforced and the entire value of v is ORed with the high nibble of the channel default. If the channel default leaves, say, the d bits 0, the envelope values are free to set them on a per-frame basis. The potential problem with this, however, is that if the envelope ends in $ff to return the ctrl 1 register to its default value, that will set the d field to 0 (12.5% duty cycle). As such this method is only applicable when this result is desired or when the end of the envelope silences the channel ($f0).
 
-As for the track defaults themselves, they are... more difficult. They are in fact hard-coded by the engine. But there is no table of values; that would be far too easy and obvious. Rather, there are 2 tables - 1 for tracks 0-7 and the other for tracks 8-$b - that contain the addresses of code snippets which are called to SET the ctrl 1 values directly. This utterly obtuse system is best avoided entirely if you can manage to live with Metroid's built-in values for each track, which are listed in the track tables later in this document. If you absolutely must change them, that will be discussed in a later section.
+As for the track defaults themselves, they are... more difficult. They are in fact hard-coded by the engine. But there is no table of values; that would be far too easy and obvious. Rather, there are 2 tables - 1 for tracks 0-7 and the other for tracks 8-$b - that contain the addresses of code snippets which are called to SET the ctrl 1 values directly. This utterly obtuse system is explained in detail in a later section.
+
+But you'd be far better off just using my Metroid Music Table Patch (available from my retro docs URL, among other places), which replaces the system with a simple table of track defaults that's easy to modify. The details of how this patch works are also described in the aforementioned section.
 
 Additional Tables and Information
 
@@ -231,56 +233,56 @@ bbfa byte[$c]: Track header offsets table. Offsets are relative to the track hea
 bd31 structs: Track header block base
 
 Code to load a track header:
-BF26    LDA $BBFA,Y              
-BF29    TAY                      
-BF2A    LDX #$00                 
-BF2C    LDA $BD31,Y              
-BF2F    STA $062B,X              
-BF32    INY                      
-BF33    INX                      
-BF34    TXA                      
-BF35    CMP #$0D                 
-BF37    BNE $BF2C                
+BF26    LDA $BBFA,Y
+BF29    TAY
+BF2A    LDX #$00
+BF2C    LDA $BD31,Y
+BF2F    STA $062B,X
+BF32    INY
+BF33    INX
+BF34    TXA
+BF35    CMP #$0D
+BF37    BNE $BF2C
 
 bef7 byte[$22?]: Note length table in frames
 
 Code to load the current length for notes:
-BB2B    LDA $BEF7,Y   
+BB2B    LDA $BEF7,Y
 
 Code to limit the triangle auto-release length to 15 frames ($3c quarter-frames) when in dynamic auto-release mode:
-BBD2    CMP #$3C                 
-BBD4    BCC $BBD8                
-BBD6    LDA #$3C                 
+BBD2    CMP #$3C
+BBD4    BCC $BBD8
+BBD6    LDA #$3C
 
 be77 big-endian word [$40]: Key pitch table, in period register units. For square wave channels, period = 1789773 / frequency / 16 - 1 (triangle channel is 1 octave lower). Entry 1 must be 0 as it is rest.
 
 Code to load the period for a key:
-BB49    LDA $BE78,Y              
-BB4C    BEQ $BB59                
-BB4E    STA $0600,X              
-BB51    LDA $BE77,Y              
-BB54    ORA #$08                 
-BB56    STA $0601,X              
+BB49    LDA $BE78,Y
+BB4C    BEQ $BB59
+BB4E    STA $0600,X
+BB51    LDA $BE77,Y
+BB54    ORA #$08
+BB56    STA $0601,X
 
 b200 struct[4]: Noise presets table. Data actually starts at offset 1 ($b201). The first entry must be silence (rest).
 	+0 byte: Ctrl 1 value
 	+1 word: Period regs value
 	
 Code to play a noise preset:
-BBE5    LDA $B200,Y              
-BBE8    STA NoiseVolume_400C     
-BBEB    LDA $B201,Y              
-BBEE    STA NoisePeriod_400E     
-BBF1    LDA $B202,Y              
-BBF4    STA NoiseLength_400F     
+BBE5    LDA $B200,Y
+BBE8    STA NoiseVolume_400C
+BBEB    LDA $B201,Y
+BBEE    STA NoisePeriod_400E
+BBF1    LDA $B202,Y
+BBF4    STA NoiseLength_400F
 
 bcb0 word[5]: Envelope addresses (0-based, unlike in track headers)
 
 Code to load an envelope address:
-BA5C    LDA $BCB0,Y              
-BA5F    STA $EC                  
-BA61    LDA $BCB1,Y              
-BA64    STA $ED            
+BA5C    LDA $BCB0,Y
+BA5F    STA $EC
+BA61    LDA $BCB1,Y
+BA64    STA $ED
 
 Changing the Track Ctrl 1 Values
 
@@ -304,15 +306,15 @@ Switching tracks between 1 of these predefined addresses is not too difficult, a
 The next step in difficulty comes from modifying the values themselves. These code snippets take 2 forms, depending on whether both channels' ctrl 1 values are the same or different.
 
 Example code to assign both channels the same value:
-BC9A    LDA #$F4                 
-BC9C    BNE $BC8B                
+BC9A    LDA #$F4
+BC9C    BNE $BC8B
 
 The A register is assigned the value to be used by both, and $bc8b will copy it.
 
 Example code to assign different values to each channel:
-BCA4    LDX #$B6                 
-BCA6    LDY #$F6                 
-BCA8    BNE $BC8D                
+BCA4    LDX #$B6
+BCA6    LDY #$F6
+BCA8    BNE $BC8D
 
 Here X is assigned the square 1 channel value, and Y the square 2 channel value. $bc8d then applies these values.
 
@@ -321,30 +323,30 @@ The problem with this is that there are a limited number of possibilities to wor
 If you're less lucky you have to actually find space to put additional snippets. Or, better yet, you might just solve the problem entirely. Here is the full code for this mechanism, including the jump stubs, snippets, and post-snippet code:
 
 BC77    JMP $BCAA <- jump stubs ($12 bytes)
-BC7A    JMP $BCA4                
-BC7D    JMP $BC9A                
-BC80    JMP $BC96                
-BC83    JMP $BC89                
-BC86    JMP $BC9E                
+BC7A    JMP $BCA4
+BC7D    JMP $BC9A
+BC80    JMP $BC96
+BC83    JMP $BC89
+BC86    JMP $BC9E
 BC89    LDA #$B3  <- 1 of the code snippets (2 bytes)
 BC8B    TAX       <- code to copy A to X and Y for same value snippets (2 bytes)
-BC8C    TAY                      
+BC8C    TAY
 BC8D    JSR $B9E4 <- common return point for all snippets ($b bytes)
-BC90    JSR $BF19                
+BC90    JSR $BF19
 BC93    JMP $BAA5
 BC96    LDA #$34  <- most of the snippets ($1a bytes)
-BC98    BNE $BC8B                
-BC9A    LDA #$F4                 
-BC9C    BNE $BC8B                
-BC9E    LDX #$F5                 
-BCA0    LDY #$F6                 
-BCA2    BNE $BC8D                
-BCA4    LDX #$B6                 
-BCA6    LDY #$F6                 
-BCA8    BNE $BC8D                
-BCAA    LDX #$92                 
-BCAC    LDY #$96                 
-BCAE    BNE $BC8D                
+BC98    BNE $BC8B
+BC9A    LDA #$F4
+BC9C    BNE $BC8B
+BC9E    LDX #$F5
+BCA0    LDY #$F6
+BCA2    BNE $BC8D
+BCA4    LDX #$B6
+BCA6    LDY #$F6
+BCA8    BNE $BC8D
+BCAA    LDX #$92
+BCAC    LDY #$96
+BCAE    BNE $BC8D
 
 So we have a total of $2e bytes to play with between the jump stubs and the code snippets. However, if the snippets are to be replaced by a table of values, the 2 bytes to copy from A to X and Y are also unnecessary, bringing the total to $30 bytes.
 
@@ -352,13 +354,13 @@ To change to a table-based system, we'd make all the entries in the jump table p
 
 1 key piece of information not shown in the above code is that these jump stubs are reached with the track number (0-$b) stored at memory address $65e. The full code thus looks like this:
 
-BC77    LDA $065E                
-BC7A    ASL A                    
-BC7B    TAY                      
-BC7C    LDX $BC96,Y              
-BC7F    LDA $BC97,Y              
-BC82    TAY                      
-BC83    JMP $BC8D                
+BC77    LDA $065E
+BC7A    ASL A
+BC7B    TAY
+BC7C    LDX $BC96,Y
+BC7F    LDA $BC97,Y
+BC82    TAY
+BC83    JMP $BC8D
 
 Then at $bc96 we inject the table: B3 B3 92 96 92 96 92 96 34 34 F4 F4 92 96 34 34 34 34 B6 F6 F5 F6 B6 F6
 
