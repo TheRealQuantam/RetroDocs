@@ -1,0 +1,545 @@
+EARTHBOUND ZERO MUSIC FORMAT ADDENDUM
+v0.1
+
+By Justin Olbrantz (Quantam)
+
+The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
+
+This document is an addendum to the Mother Music Format specification. While that specification was based on the Japanese original, based on the assumption that romhackers would base their hacks on fan translations of the Japanese version, this addendum covers the official English prototype, commonly referred to as EarthBound Zero, that was cancelled before release but later leaked and later still reworked and released as EarthBound Beginnings on the Virtual Console. For the most part the audio systems of the Japanese and English versions are identical (apart from things being at different addresses), though the English version features an additional music track, if indeed it can be called music.
+
+Bank Configuration:
+$8000-$9fff: Bank $1c
+$a000-$bfff: Bank $1d
+
+File offsets = address + $30010
+
+1c:9074 byte[$68?]: Note length table in frames
+
+Code to load the current length for notes:
+8D42    LDA $9074,Y
+
+Code to limit the triangle auto-release length to 15 frames ($3c quarter-frames) when in dynamic auto-release mode:
+8E0B    CMP #$3C
+8E0D    BCC $8E11
+8E0F    LDA #$3C
+
+1c:8fea big-endian word[$43]: Key pitch table, in period register units. For square wave channels, period = 1789773 / frequency / 16 - 1 (triangle channel is 1 octave lower). Entry 1 must be 0 as it is rest.
+
+Code to load the period for a melodic key:
+8D5E    LDA $8FEB,Y
+...
+8D79    LDA $8FEB,Y
+8D7C    STA $0780,X
+8D7F    LDA $8FEA,Y
+8D82    ORA #$08
+8D84    STA $0781,X
+
+1c:89a7 byte[$1f?]: Noise presets table. Data actually starts at offset 1 ($b201), and is NOT an array, as some entries overlap. The first byte should always be $10 as preset 1 is rest.
+
+Code to play a noise preset:
+8E2B    LDA $89A7,Y
+8E2E    STA NoiseVolume_400C
+8E31    LDA $89A8,Y
+8E34    STA NoisePeriod_400E
+8E37    LDA $89A9,Y
+8E3A    STA NoiseLength_400F
+
+Code to play a DMC preset if any:
+8E3E    TYA
+8E3F    AND #$C0
+8E41    CMP #$40
+8E43    BEQ $8E4A
+8E45    CMP #$80
+8E47    BEQ $8E54
+8E49    RTS
+8E4A    LDA #$0E
+8E4C    STA $B1
+8E4E    LDA #$07
+8E50    LDY #$00
+8E52    BEQ $8E5C
+8E54    LDA #$0E
+8E56    STA $B1
+8E58    LDA #$0F
+8E5A    LDY #$02
+8E5C    STA DmcLength_4013
+8E5F    STY DmcAddress_4012
+8E62    LDA $07F7
+8E65    BNE $8E7B
+8E67    LDA $B1
+8E69    STA DmcFreq_4010
+8E6C    LDA #$0F
+8E6E    STA ApuStatus_4015
+8E71    LDA #$00
+8E73    STA DmcCounter_4011
+8E76    LDA #$1F
+8E78    STA ApuStatus_4015
+8E7B    RTS
+
+1c:8e85 word[$1c]: Volume envelope table. Indices are 0-based, unlike in the set timbre commands and the following table. The first $1b envelopes are identical to those in Mother, but are repeated here for convenience; however, EarthBound Zero has 1 additional envelope not found in Mother, used by the new track.
+
+Envelope  1 @8ee9: 233456776554 ff
+Envelope  2 @8ef0: 5a9888776666655555 ff
+Envelope  3 @8f14: 111122223333444444455555556666777888 ff
+Envelope  4 @8f27: f987777766655544 ff
+Envelope  5 @8f30: a876 ff
+Envelope  6 @8f36: 99 ff
+Envelope  7 @8ee2: 235678888887 ff
+Envelope  8 @8f38: dcba998887765544 ff
+Envelope  9 @8f41: 2344333333333332 ff
+Envelope  a @8f33: 7432 ff
+Envelope  b @8f4a: 7776655544433221 f0
+Envelope  c @8f53: 44433332221111 f0
+Envelope  d @8f5b: 33332222111111 f0
+Envelope  e @8f63: 222222111111 f0
+Envelope  f @8f6a: 1111111111110100 f0
+Envelope 10 @8f73: 998877766655544433333332222222222111111111111111 f0
+Envelope 11 @8fbe: 23455544333322 ff
+Envelope 12 @8fc6: 87654321443321113221111121111111111111 ff
+Envelope 13 @8f8c: 6555544433333333222222221111111111111111 f0
+Envelope 14 @8fda: 666542213221111121111111111111 ff
+Envelope 15 @8fa1: fbbaaa99999998887777776666665554444443333322222222111111 f0
+Envelope 16 @8ebd: 7611111431 ff
+Envelope 17 @8efa: 111122223333444444455555556666777888765432 ff
+Envelope 18 @8ed9: 9876632287765311 f0
+Envelope 19 @8ed2: 233332222222 ff
+Envelope 1a @8ec7: 91919191919191919191 f0
+Envelope 1b @8ec3: 334566 ff
+Envelope 1c @8f10: 111122 ff
+
+Code to load a volume envelope address:
+8BC0    LDA $8E85,Y
+8BC3    STA $B2
+8BC5    LDA $8E86,Y
+8BC8    STA $B3
+
+EarthBound Zero has the same set of pitch envelopes as Mother:
+89F6    LDA $B2
+89F8    CMP #$31
+89FA    BNE $89FE
+89FC    LDA #$27
+89FE    TAY
+89FF    LDA $8A85,Y
+8A02    PHA
+8A03    LDA $07C3,X
+8A06    CMP #$46
+8A08    BNE $8A0F
+8A0A    PLA
+8A0B    LDA #$00
+8A0D    BEQ $8A6D
+8A0F    PLA
+8A10    JMP $8A6D
+8A13    LDA $B2
+8A15    TAY
+8A16    CMP #$10
+8A18    BCS $8A20
+8A1A    LDA $8ABC,Y
+8A1D    JMP $8A73
+8A20    LDA #$F6
+8A22    BNE $8A73
+8A24    LDA $07C3,X
+8A27    CMP #$4C
+8A29    BCC $8A2F
+8A2B    LDA #$FE
+8A2D    BNE $8A73
+8A2F    LDA #$FE
+8A31    BNE $8A73
+...
+8A33    LDA $07D1,X <- starts here
+8A36    STA $B2
+8A38    LDA $B0
+8A3A    CMP #$20
+8A3C    BEQ $8A52
+8A3E    CMP #$A0
+8A40    BEQ $8A61
+8A42    CMP #$60
+8A44    BEQ $8A24
+8A46    CMP #$40
+8A48    BEQ $8A13
+8A4A    CMP #$80
+8A4C    BEQ $89F6
+8A4E    CMP #$C0
+8A50    BEQ $89F6
+8A52    LDA $B2
+8A54    CMP #$0A
+8A56    BNE $8A5A
+8A58    LDA #$00
+8A5A    TAY
+8A5B    LDA $8AB2,Y
+8A5E    JMP $8A6D
+8A61    LDA $B2
+8A63    CMP #$2B
+8A65    BNE $8A69
+8A67    LDA #$21
+8A69    TAY
+8A6A    LDA $8A91,Y
+8A6D    PHA
+8A6E    TYA
+8A6F    STA $07D1,X
+8A72    PLA
+8A73    PHA
+8A74    LDA $07C8,X
+8A77    BNE $8A83
+8A79    PLA
+8A7A    CLC
+8A7B    ADC $B1
+8A7D    LDY $BE
+8A7F    STA Sq0Timer_4002,Y
+8A82    RTS
+8A83    PLA
+8A84    RTS
+
+The code that determines whether a given envelope has the triangle "forever" flag set:
+8DF4    LDA $079C
+8DF7    AND #$C0
+8DF9    BNE $8DFE
+8DFB    TYA
+8DFC    BNE $8E06
+8DFE    CMP #$C0
+8E00    BEQ $8DFB
+8E02    LDA #$FF
+
+1c:90dc byte[$18]: Low track header offset table. Indices are actually 0-based, unlike the numbers given.
+1c:90f4 byte[$19]: High track header offset table
+1c:910e struct[$18]: Low track header block
+1c:91fe struct[$19]: High track header block
+1c:92f8 struct: Track $32 header
+
+Track bank 0: Header offset table 90dc, header block base 910e:
+   1 Eight Melodies @910e:  +24  +18  ffff  ffff   76c  ffff
+    Triangle @ 76c: 9353 935a 9365 9370 937c 9388 9391 939e 93aa 0000
+
+   2 Battle Theme 1 @9118:   +0  +28  93b2  93ba  93c4  93d6
+    Square 1 @93b2: 963b | 93de
+    Square 2 @93ba: 964d | 94b4 94f7
+    Triangle @93c4: 965f | 9590 95a2 9590 9590 95a2 95d3
+    Noise    @93d6: 9671 | 95ec
+
+   3 Battle Theme 2 @9122:   +0  +28  9617  9621  962b  9633
+    Square 1 @9617: 963b | 9674 96b6
+    Square 2 @9621: 964d | 9695 975a
+    Triangle @962b: 965f | 97c8
+    Noise    @9633: 9671 | 9823
+
+   4 Battle Theme 3 @912c:   +0  +28  9847  9851  985b  9867
+    Square 1 @9847: 963b | 9871 98a9
+    Square 2 @9851: 964d | 98bd 993e
+    Triangle @985b: 965f | 9988 99a7 999c
+    Noise    @9867: 9671 | 99d4 99d4
+
+   5 Victory @9136:   +0   +0  9a03  9a07  9a09  ffff
+    Square 1 @9a03: 9a0b 0000
+    Square 2 @9a07: 9a1a
+    Triangle @9a09: 9a29
+
+   6 Pollyanna (I Believe in You) @914a:   +0  +35  9bb7  9bc1  9bcb  9bd3
+    Square 1 @9bb7: 9bdb | 9c54 9c98
+    Square 2 @9bc1: 9bfc | 9d3f 9d76
+    Triangle @9bcb: 9c1d | 9dae
+    Noise    @9bd3: 9c35 | 9ce8
+
+   7 Bein' Friends @9140:   +0  +28  9e2d  9e39  9e45  9e51
+    Square 1 @9e2d: | 9e5d 9ed2 9ed2 9f6b
+    Square 2 @9e39: | 9e84 9ef7 9ef7 9fc0
+    Triangle @9e45: | 9eb0 9f1b 9f1b a003
+    Noise    @9e51: | 9ebe 9f57 9f57 a054
+
+   8 Advent Desert @9154:   -2   +c  9a38  9a40  9a48  9a50
+    Square 1 @9a38: 9a58 | 9a74
+    Square 2 @9a40: 9a61 | 9ae6
+    Triangle @9a48: 9a6a | 9b93
+    Noise    @9a50: 9a70 | 9bac
+
+   9 Magicant @915e:   +0  +4c  a12c  a134  a13a  a148
+    Square 1 @a12c: a14e | a158
+    Square 2 @a134: | a155
+    Triangle @a13a: | a1c4 a1d0 a1e1 a1e1 a1f2
+    Noise    @a148: | a20a
+
+   a Snow Man @9168:   +0  +35  a21a  a230  a236  ffff
+    Square 1 @a21a: a2a6 | a2b0 a2d5 a2b0 a2fd a31b a335 a31b a349
+    Square 2 @a230: a2ac ffff a21c
+    Square 2 @a21c: | a2b0 a2d5 a2b0 a2fd a31b a335 a31b a349
+    Triangle @a236: | a240 a240 a279
+
+   b Mount Itoi @9172:   +0  +4c  a36d  a373  a379  a37f
+    Square 1 @a36d: | a385
+    Square 2 @a373: | a39f
+    Triangle @a379: | a3e8
+    Noise    @a37f: | a416
+
+   c Factory @917c:   +0  +35  a737  a72f  a741  a749
+    Square 1 @a737: a7b0 | a75a a79d
+    Square 2 @a72f: | a757 a79a
+    Triangle @a741: | a7b6 a7bf
+    Noise    @a749: | a7d3 a7e6 a7f8 a7e6 a7fe
+
+   d South Cemetery @9186:   +0  +35  a425  a42d  a435  a43d
+    Square 1 @a425: a445 | a4a6
+    Square 2 @a42d: a45d | a4a3
+    Triangle @a435: a478 | a4ec
+    Noise    @a43d: a48b | a516
+
+   e Twinkle Elementary School @9190:   +0  +18  a529  a52f  a535  a53b
+    Square 1 @a529: | a541
+    Square 2 @a52f: | a585
+    Triangle @a535: | a5b1
+    Noise    @a53b: | a5d7
+
+   f Humoresque of a Little Dog @919a:   +0  +18  a60e  a616  a61c  a622
+    Square 1 @a60e: a6ca | a62b
+    Square 2 @a616: | a628
+    Triangle @a61c: | a6d0
+    Noise    @a622: | a708
+
+  10 Poltergeist @91a4:   -8  +18  a083  a08d  a097  a0a1
+    Square 1 @a083: a0a9 | a0ae a0c4
+    Square 2 @a08d: a0cc | a0cc a0e7
+    Triangle @a097: a0ef | a0fa a108
+    Noise    @a0a1: a111 | ae06
+
+  11 Basement @91ae:   +0  +28  a811  a819  a825  a82d
+    Square 1 @a811: a835 | a85a
+    Square 2 @a819: a840 | a867 a85d a88a
+    Triangle @a825: a84b | a895
+    Noise    @a82d: a855 | a8ac
+
+  12 My Home @91b8:   +2  +43  a995  a98f  a99b  a9a1
+    Square 1 @a995: | a9e2
+    Square 2 @a98f: | a9ac
+    Triangle @a99b: | aa02
+    Noise    @a9a1: | a9a7
+
+  13 Cave 2 @91c2:   +0  +35  aa1c  aa26  aa2e  aa36
+    Square 1 @aa1c: aa5a aab3 | aabb
+    Square 2 @aa26: aa3e | aa98
+    Triangle @aa2e: aa73 | aad3
+    Noise    @aa36: aa8b | aaf5
+
+  14 The Paradise Line @91cc:   +0  +18  bc45  bc59  bc65  bc79
+    Square 1 @bc45: bc81 | bd2a bd2a bd3e bd2a bd2a bd3e bd51
+    Square 2 @bc59: bcae | bd9b bd9b bdf9
+    Triangle @bc65: bccf | be43 be43 be51 be43 be43 be51 be5b
+    Noise    @bc79: bcfc | be7c
+
+  15 Fallin' Love @91d6:   +0  +43  ab1e  ab2c  ab36  ab3c
+    Square 1 @ab1e: | ab66 ab6e ab6a ab6e ab50
+    Square 2 @ab2c: ab42 | ab46 ab7d
+    Triangle @ab36: | abb5
+    Noise    @ab3c: | abc4
+
+  16 Mother Earth @91e0:   +0  +28  bb29  bb23  bb2f  bb35
+    Square 1 @bb29: | bb92
+    Square 2 @bb23: | bb3b
+    Triangle @bb2f: | bc0d
+    Noise    @bb35: | bc3f
+
+  17 Tank @91ea:   +0  +18  abe0  abf0  abfe  ac06
+    Square 1 @abe0: | ac77 ac7f ac7f ac91 acec ac23
+    Square 2 @abf0: | acb3 acbb acbb accd ac0e
+    Triangle @abfe: | ad9c ac3e
+    Noise    @ac06: | ade6 ac5b
+
+  18 Ruins of Desert @91f4:   +0   +c  a8b5  a8bd  a8c3  ffff
+    Square 1 @a8b5: | a8c9 a8d0
+    Square 2 @a8bd: | a8cd
+    Triangle @a8c3: | a93b
+
+Track bank 1: Header offset table 90f4, header block base 91fe:
+  19 Queen Mary's Song @91fe:   +0  +28  ae84  ae6c  ffff  ffff
+    Square 1 @ae84: ae8e ffff ae6e
+    Square 1 @ae6e: | 935a 9365 9370 937c 9388 9391 939e 93aa ae8a
+    Square 2 @ae6c: ae94 | 935a 9365 9370 937c 9388 9391 939e 93aa ae8a
+
+  1a Wisdom of the World @9208:   +0  +5a  aefb  af01  af07  ffff
+    Square 1 @aefb: | af0d
+    Square 2 @af01: | af69
+    Triangle @af07: | afca
+
+  1b Tombstone @9212:  +24  +4c  afff  aff7  ffff  ffff
+    Square 1 @afff: b00b | 9d42
+    Square 2 @aff7: | b007 9d42
+
+  1c Game Over @921c:   +0  +4c  b012  b01a  b022  ffff
+    Square 1 @b012: b026 b02f ffff b01c
+    Square 1 @b01c: | b039
+    Square 2 @b01a: b02c | b039
+    Triangle @b022: b049 0000
+
+  1d Big Victory @9226:   +0  +18  b061  b065  b067  ffff
+    Square 1 @b061: b069 0000
+    Square 2 @b065: b07b
+    Triangle @b067: b08f
+
+  1e Airplane @9230:   +0  +18  b992  b998  b99e  b9b0
+    Square 1 @b992: | b9b8
+    Square 2 @b998: | b9f8
+    Triangle @b99e: | ba43 ba73 ba73 bae3 bb00 bae3 bb0a
+    Noise    @b9b0: | ba82 baa6
+
+  1f Level Up @923a:   +6   +0  aec7  aed1  aed9  ffff
+    Square 1 @aec7: b069 aee1 | aeec
+    Square 2 @aed1: b07b | aee9
+    Triangle @aed9: b08f | aef8
+
+  20 Recovery @9244:   -4  +18  ae98  ae9c  ae9e  ffff
+    Square 1 @ae98: aea0 0000
+    Square 2 @ae9c: aead
+    Triangle @ae9e: aeb9
+
+  21 Fanfare @924e:   -4  +43  b438  b43c  b43e  ffff
+    Square 1 @b438: b44c 0000
+    Square 2 @b43c: b440
+    Triangle @b43e: b459
+
+  22 Live House @9258:   -8  +18  b09e  b0a4  b0b0  b0bc
+    Square 1 @b09e: | b0c2
+    Square 2 @b0a4: | b0de b0de b0f4 b0de
+    Triangle @b0b0: | b107 b107 b11b b107
+    Noise    @b0bc: | b12c
+
+  23 All That I Needed (Was You) @9262:   +0  +18  b13c  b152  b162  b174
+    Square 1 @b13c: b1df b1f3 b1f3 b238 b243 b243 b243 b268 b1f3 b238 b178 b1c8
+    Square 2 @b152: b1c8 b295 b2cf b295 b2d2 b295 b18c 0000
+    Triangle @b162: b1eb b340 b340 b35d b360 b360 b36d b340 b1b5
+    Noise    @b174: b384 b3ab
+
+  24 Melody 1 - Doll @926c:  +48  +28  9302  9306  ffff  ffff
+    Square 1 @9302: 9347 935a
+    Square 2 @9306: 9357 0000
+
+  25 Melody 2 - Canary @9276:  +24  +28  930a  930e  ffff  ffff
+    Square 1 @930a: 934d 9365
+    Square 2 @930e: 9362 0000
+
+  26 Melody 3 - Monkey @9280:   +0  +28  9312  9316  ffff  ffff
+    Square 1 @9312: 934d 9370
+    Square 2 @9316: 936d 0000
+
+  27 Melody 4 - Piano @928a:   +0  +28  931a  931e  ffff  ffff
+    Square 1 @931a: 9347 937c
+    Square 2 @931e: 9379 0000
+
+  28 Melody 5 - Cactus @9294:  +48  +28  9322  9326  ffff  ffff
+    Square 1 @9322: 934d 9388
+    Square 2 @9326: 9385 0000
+
+  29 Melody 6 - Dragon @929e:  +24  +28  932a  932e  ffff  ffff
+    Square 1 @932a: 934d 9391
+    Square 2 @932e: 938e 0000
+
+  2a Melody 7 - EVE @92a8:  +48  +28  9332  9336  ffff  ffff
+    Square 1 @9332: 9347 939e
+    Square 2 @9336: 939b 0000
+
+  2b Melody 8 - Tombstone @92b2:  +24  +28  933a  933e  ffff  ffff
+    Square 1 @933a: 934d 93aa
+    Square 2 @933e: 93a7 0000
+
+  2c Giegue @92bc:   +0  +43  b461  b467  ffff  ffff
+    Square 1 @b461: | b46d
+    Square 2 @b467: | b473
+
+  2d Ending @92c6:   +0  +28  b825  b817  b839  b847
+    Square 1 @b825: b644 b896 b5e1 b6e6 b72c b78a b602 | b644
+    Square 2 @b817: b605 b855 b5cb b693 | b605
+    Triangle @b839: b689 b964 b5f8 b7a0 | b689
+    Noise    @b847: b68e b988 b5fd b7e7 | b68e
+
+  2e Choucream Zoo @92d0:   +0  +28  b479  b47f  a827  a82f
+    Square 1 @b479: | b485
+    Square 2 @b47f: | b48d
+    Triangle @a827: | a895
+    Noise    @a82f: | a8ac
+
+  2f Phone @92da:   +0  +18  ffff  b495  ffff  ffff
+    Square 2 @b495: | b49b
+
+  30 Youngtown @92e4:   +0  +28  b4a3  b4a9  b4af  ffff
+    Square 1 @b4a3: | b4bb
+    Square 2 @b4a9: | b4e7
+    Triangle @b4af: | b51c
+
+  31 Cave 1 @92ee:   +0  +28  b556  b55e  ffff  ffff
+    Square 1 @b556: b564 | b56d
+    Square 2 @b55e: | b56a
+
+Track 1 (Eight Melodies) functions the same as it did in Mother.
+
+1c:80e6 word[$a]: Base (0 melodies) track 1 triangle playlist
+1c:8238 word[8]: Full (8 melodies) track 1 triangle playlist entries 1-8
+
+The code to update the playlist based on the currently acquired melodies:
+8248    LDA $761E
+824B    STA $B0
+824D    LDY #$00
+824F    BEQ $825D
+8251    LDA #$42
+8253    STA $076E,Y
+8256    INY
+8257    LDA #$93
+8259    STA $076E,Y
+825C    INY
+825D    TYA
+825E    CMP #$10
+8260    BEQ $8276
+8262    LSR $B0
+8264    BCC $8251
+8266    LDA $8238,Y
+8269    STA $076E,Y
+826C    INY
+826D    LDA $8238,Y
+8270    STA $076E,Y
+8273    INY
+8274    BNE $825D
+8276    RTS
+
+The code to never use pitch envelopes on track 1:
+89CC    LDA $07FD
+89CF    CMP #$01
+89D1    BEQ $89F5
+
+There is a very slight difference in block $ba43 of track $1e (Airplane): 2 E2 half notes were fused into a single whole note. As this is on the triangle channel and auto-release is disabled, this is probably inaudible.
+
+  32 Unknown @92f8:   +0  +43  b580  b588  b590  b596
+    Square 1 @b580: b59c | b59f
+    Square 2 @b588: b5a3 | b5a6
+    Triangle @b590: | b5aa
+    Noise    @b596: | b5bc
+
+Track $32 is unique to EarthBound Zero. Although this track's header comes immediately after track $31's and could barely have fit in bank 1, it is not present in the header offset table and is hard-coded in the BeginTrack function:
+8AF4    CMP #$32
+8AF6    BEQ $8B06
+...
+8B06    LDX #$00
+8B08    LDY #$00
+8B0A    LDA $92F8,Y
+8B0D    STA $0790,X
+8B10    INY
+8B11    INX
+8B12    TXA
+8B13    CMP #$0A
+8B15    BNE $8B0A
+
+Code to load a bank 0 track header:
+8B1E    LDA $90DC,Y
+8B21    TAY
+8B22    LDX #$00
+8B24    LDA $910E,Y
+8B27    STA $0790,X
+8B2A    INY
+8B2B    INX
+8B2C    TXA
+8B2D    CMP #$0A
+8B2F    BNE $8B24
+
+Code to load a bank 1 track header:
+8AD0    LDA $90F4,Y
+8AD3    TAY
+8AD4    LDX #$00
+8AD6    LDA $91FE,Y
+8AD9    STA $0790,X
+8ADC    INY
+8ADD    INX
+8ADE    TXA
+8ADF    CMP #$0A
+8AE1    BNE $8AD6
