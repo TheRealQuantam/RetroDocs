@@ -1,5 +1,5 @@
 MOTHER MUSIC FORMAT
-v0.2
+v1.0
 
 By Justin Olbrantz (Quantam)
 
@@ -310,7 +310,7 @@ A8 76 FF: Short decay envelope into sustain. Frames 0-3 will have the volume val
 
 91 91 91 91 91 91 91 91 91 91 F0: Odd short, non-sustaining, 30 Hz tremolo envelope of center 5 and depth (center to peak) 4 that silences the channel after 20 frames (1/3 sec). 30 Hz is above the limit of hearing, so this will likely have a peculiar frequency modulation effect.
 
-Pitch envelopes are the only truly janky feature of the Mother engine. They are a hybrid system that mixes period-linear absolute (i.e. not relative to the previous frame) period offset arrays with hard-coded behavior (including the length and loop points of the arrays). Making matters worse is the fact that on the triangle channel the "forever" field of the auto-release settings is encoded in the same bits as the pitch envelope number, meaning only certain envelope/auto-release setting combinations are possible. While it is entirely conceivable that the set of envelopes could be game-specific, all games I've investigated have had the same set of envelopes.
+Pitch envelopes are the only truly janky feature of the Mother engine. They are a hybrid system that mixes period-linear absolute (i.e. not relative to the previous frame) period offset arrays with hard-coded behavior (including the length and loop points of the arrays). Making matters worse is the fact that on the triangle channel the "forever" field of the auto-release settings is encoded in the same bits as the pitch envelope number, meaning only certain envelope/auto-release setting combinations are possible. While it is entirely conceivable that the set of envelopes could be game-specific, all games I've investigated have had the same set of pitch envelopes.
 
 A basic description of the pitch envelopes is as follows, showing the envelope number, "forever" field, and a basic description; for a more detailed description see the additional information section.
 
@@ -618,97 +618,97 @@ Track 1 is very special. Its triangle channel points into RAM, as the playlist i
 
 The base (no pieces acquired) version of this track is copied from 1c:8217 ($a words) during initialization. Game-specific code in the begin track process then selects either the melody piece from 1c:822b (8 words) or the placeholder beep (block address $9299) for each piece:
 
-823B    LDA $761E                
-823E    STA $B0                  
-8240    LDY #$00                 
-8242    BEQ $8250                
-8244    LDA #$99                 
-8246    STA $076E,Y              
-8249    INY                      
-824A    LDA #$92                 
-824C    STA $076E,Y              
-824F    INY                      
-8250    TYA                      
-8251    CMP #$10                 
-8253    BEQ $8269                
-8255    LSR $B0                  
-8257    BCC $8244                
-8259    LDA $822B,Y              
-825C    STA $076E,Y              
-825F    INY                      
-8260    LDA $822B,Y              
-8263    STA $076E,Y              
-8266    INY                      
-8267    BNE $8250                
-8269    RTS                      
+823B    LDA $761E
+823E    STA $B0
+8240    LDY #$00
+8242    BEQ $8250
+8244    LDA #$99
+8246    STA $076E,Y
+8249    INY
+824A    LDA #$92
+824C    STA $076E,Y
+824F    INY
+8250    TYA
+8251    CMP #$10
+8253    BEQ $8269
+8255    LSR $B0
+8257    BCC $8244
+8259    LDA $822B,Y
+825C    STA $076E,Y
+825F    INY
+8260    LDA $822B,Y
+8263    STA $076E,Y
+8266    INY
+8267    BNE $8250
+8269    RTS
 
 1c:8fd6 byte[$68?]: Note length table in frames
 
 Code to load the current length for notes:
-8CAA    LDA $8FD6,Y              
+8CAA    LDA $8FD6,Y
 
 Code to limit the triangle auto-release length to 15 frames ($3c quarter-frames) when in dynamic auto-release mode:
-8D73    CMP #$3C                 
-8D75    BCC $8D79                
-8D77    LDA #$3C                 
+8D73    CMP #$3C
+8D75    BCC $8D79
+8D77    LDA #$3C
 
 1c:8f4c big-endian word[$43]: Key pitch table, in period register units. For square wave channels, period = 1789773 / frequency / 16 - 1 (triangle channel is 1 octave lower). Entry 1 must be 0 as it is rest.
 
 Code to load the period for a key:
-8CC6    LDA $8F4D,Y              
+8CC6    LDA $8F4D,Y
 ...
-8CE1    LDA $8F4D,Y              
-8CE4    STA $0780,X              
-8CE7    LDA $8F4C,Y              
-8CEA    ORA #$08                 
-8CEC    STA $0781,X              
+8CE1    LDA $8F4D,Y
+8CE4    STA $0780,X
+8CE7    LDA $8F4C,Y
+8CEA    ORA #$08
+8CEC    STA $0781,X
 
 1c:8928 byte[$1f?]: Noise presets table. Data actually starts at offset 1 ($b201), and is NOT an array, as some entries overlap. The first byte should always be $10 as preset 1 is rest.
 	+0 byte: Ctrl 1 value
 	+1 word: Period regs value
 	
 Code to play a noise preset:
-8D93    LDA $8928,Y              
-8D96    STA NoiseVolume_400C     
-8D99    LDA $8929,Y              
-8D9C    STA NoisePeriod_400E     
-8D9F    LDA $892A,Y              
-8DA2    STA NoiseLength_400F     
+8D93    LDA $8928,Y
+8D96    STA NoiseVolume_400C
+8D99    LDA $8929,Y
+8D9C    STA NoisePeriod_400E
+8D9F    LDA $892A,Y
+8DA2    STA NoiseLength_400F
 
 Code to play a DMC preset if any:
-8DA6    TYA                      
-8DA7    AND #$C0                 
-8DA9    CMP #$40                 
-8DAB    BEQ $8DB2                
-8DAD    CMP #$80                 
-8DAF    BEQ $8DBC                
-8DB1    RTS                      
+8DA6    TYA
+8DA7    AND #$C0
+8DA9    CMP #$40
+8DAB    BEQ $8DB2
+8DAD    CMP #$80
+8DAF    BEQ $8DBC
+8DB1    RTS
 8DB2    LDA #$0E  <- preset 1: kick drum
-8DB4    STA $B1                  
-8DB6    LDA #$07                 
-8DB8    LDY #$00                 
-8DBA    BEQ $8DC4                
+8DB4    STA $B1
+8DB6    LDA #$07
+8DB8    LDY #$00
+8DBA    BEQ $8DC4
 8DBC    LDA #$0E  <- preset 2: snare drum
-8DBE    STA $B1                  
-8DC0    LDA #$0F                 
-8DC2    LDY #$02                 
-8DC4    STA DmcLength_4013       
-8DC7    STY DmcAddress_4012      
-8DCA    LDA $07F7                
-8DCD    BNE $8DE3                
-8DCF    LDA $B1                  
-8DD1    STA DmcFreq_4010         
-8DD4    LDA #$0F                 
-8DD6    STA ApuStatus_4015       
-8DD9    LDA #$00                 
-8DDB    STA DmcCounter_4011      
-8DDE    LDA #$1F                 
-8DE0    STA ApuStatus_4015       
-8DE3    RTS                      
+8DBE    STA $B1
+8DC0    LDA #$0F
+8DC2    LDY #$02
+8DC4    STA DmcLength_4013
+8DC7    STY DmcAddress_4012
+8DCA    LDA $07F7
+8DCD    BNE $8DE3
+8DCF    LDA $B1
+8DD1    STA DmcFreq_4010
+8DD4    LDA #$0F
+8DD6    STA ApuStatus_4015
+8DD9    LDA #$00
+8DDB    STA DmcCounter_4011
+8DDE    LDA #$1F
+8DE0    STA ApuStatus_4015
+8DE3    RTS
 
 Volume Envelope Table
 
-1c:8ded word[$1b]: Volume envelope table. Indices are 0-based, unlike in set timbre commands.
+1c:8ded word[$1b]: Volume envelope table. Indices are 0-based, unlike in the set timbre commands and the following table.
 
 Envelope  1 @8e4f: 233456776554 ff
 Envelope  2 @8e56: 5a9888776666655555 ff
@@ -739,10 +739,10 @@ Envelope 1a @8e2d: 91919191919191919191 f0
 Envelope 1b @8e29: 334566 ff
 
 Code to load an envelope address:
-8B28    LDA $8DED,Y              
-8B2B    STA $B2                  
-8B2D    LDA $8DEE,Y              
-8B30    STA $B3                  
+8B28    LDA $8DED,Y
+8B2B    STA $B2
+8B2D    LDA $8DEE,Y
+8B30    STA $B3
 
 Pitch Envelopes
 
@@ -766,87 +766,87 @@ Envelope 6 @8a06: +9 +8 +7 +6 +5 +4 +3 +2 +2 +1 +1 +0 +0 +0 +0 +0 +0 +0 +0 +0 +0
 The weirdness on envelopes 3, 4, and 6 are found on all games using this engine that I've investigated.
 
 The code. It actually starts at $89b4, with the pitch envelope index in the high 3 bits of $b0 and the current index into the envelope in $b2:
-8977    LDA $B2     <- envelopes 4 and 6             
-8979    CMP #$31                 
-897B    BNE $897F                
-897D    LDA #$27                 
-897F    TAY                      
-8980    LDA $8A06,Y              
-8983    PHA                      
-8984    LDA $07C3,X              
-8987    CMP #$46                 
-8989    BNE $8990                
-898B    PLA                      
+8977    LDA $B2     <- envelopes 4 and 6
+8979    CMP #$31
+897B    BNE $897F
+897D    LDA #$27
+897F    TAY
+8980    LDA $8A06,Y
+8983    PHA
+8984    LDA $07C3,X
+8987    CMP #$46
+8989    BNE $8990
+898B    PLA
 898C    LDA #$00    <- hard-coded +0 pitch adjustment if current key number is $46/2 = $23
-898E    BEQ $89EE                
-8990    PLA                      
-8991    JMP $89EE                
+898E    BEQ $89EE
+8990    PLA
+8991    JMP $89EE
 8994    LDA $B2     <- envelope 2
-8996    TAY                      
-8997    CMP #$10                 
-8999    BCS $89A1                
-899B    LDA $8A3D,Y              
-899E    JMP $89F4                
-89A1    LDA #$F6                 
-89A3    BNE $89F4                
+8996    TAY
+8997    CMP #$10
+8999    BCS $89A1
+899B    LDA $8A3D,Y
+899E    JMP $89F4
+89A1    LDA #$F6
+89A3    BNE $89F4
 89A5    LDA $07C3,X <- envelope 3
 89A8    CMP #$4C    <- utterly pointless key number check as both paths are the same
-89AA    BCC $89B0                
-89AC    LDA #$FE                 
-89AE    BNE $89F4                
-89B0    LDA #$FE                 
-89B2    BNE $89F4                
+89AA    BCC $89B0
+89AC    LDA #$FE
+89AE    BNE $89F4
+89B0    LDA #$FE
+89B2    BNE $89F4
 ...
 89B4    LDA $07D1,X <- actually starts here
-89B7    STA $B2                  
-89B9    LDA $B0                  
-89BB    CMP #$20                 
+89B7    STA $B2
+89B9    LDA $B0
+89BB    CMP #$20
 89BD    BEQ $89D3 <- envelope 1 branch
-89BF    CMP #$A0                 
+89BF    CMP #$A0
 89C1    BEQ $89E2 <- envelope 5 branch
-89C3    CMP #$60                 
+89C3    CMP #$60
 89C5    BEQ $89A5 <- envelope 3 branch
-89C7    CMP #$40                 
+89C7    CMP #$40
 89C9    BEQ $8994 <- envelope 2 branch
-89CB    CMP #$80                 
+89CB    CMP #$80
 89CD    BEQ $8977 <- envelope 4 branch
-89CF    CMP #$C0                 
+89CF    CMP #$C0
 89D1    BEQ $8977 <- envelope 6 branch
 89D3    LDA $B2   <- envelopes 1 and 7
-89D5    CMP #$0A                 
-89D7    BNE $89DB                
-89D9    LDA #$00                 
-89DB    TAY                      
-89DC    LDA $8A33,Y              
-89DF    JMP $89EE                
+89D5    CMP #$0A
+89D7    BNE $89DB
+89D9    LDA #$00
+89DB    TAY
+89DC    LDA $8A33,Y
+89DF    JMP $89EE
 89E2    LDA $B2   <- envelope 5
-89E4    CMP #$2B                 
-89E6    BNE $89EA                
-89E8    LDA #$21                 
-89EA    TAY                      
-89EB    LDA $8A12,Y              
-89EE    PHA                      
-89EF    TYA                      
-89F0    STA $07D1,X              
-89F3    PLA                      
-89F4    PHA         <- common path             
-89F5    LDA $07C8,X              
-89F8    BNE $8A04   <- don't mess with it if a sound effect is playing             
-89FA    PLA                      
-89FB    CLC                      
-89FC    ADC $B1                  
-89FE    LDY $BE                  
-8A00    STA Sq0Timer_4002,Y      
-8A03    RTS                      
-8A04    PLA                      
-8A05    RTS                      
+89E4    CMP #$2B
+89E6    BNE $89EA
+89E8    LDA #$21
+89EA    TAY
+89EB    LDA $8A12,Y
+89EE    PHA
+89EF    TYA
+89F0    STA $07D1,X
+89F3    PLA
+89F4    PHA         <- common path
+89F5    LDA $07C8,X
+89F8    BNE $8A04   <- don't mess with it if a sound effect is playing
+89FA    PLA
+89FB    CLC
+89FC    ADC $B1
+89FE    LDY $BE
+8A00    STA Sq0Timer_4002,Y
+8A03    RTS
+8A04    PLA
+8A05    RTS
 
 The code that determines whether a given envelope has the triangle "forever" flag set:
 8D5C    LDA $079C <- pitch envelope in top 3 bits
-8D5F    AND #$C0                 
-8D61    BNE $8D66                
-8D63    TYA                      
-8D64    BNE $8D6E                
-8D66    CMP #$C0                 
-8D68    BEQ $8D63                
+8D5F    AND #$C0
+8D61    BNE $8D66
+8D63    TYA
+8D64    BNE $8D6E
+8D66    CMP #$C0
+8D68    BEQ $8D63
 8D6A    LDA #$FF  <- forever. Either bit 6 or 7 is set, but not both.
