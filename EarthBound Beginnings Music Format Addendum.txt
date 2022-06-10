@@ -1,17 +1,25 @@
-EARTHBOUND ZERO MUSIC FORMAT ADDENDUM
-v0.1
+EARTHBOUND BEGINNINGS MUSIC FORMAT ADDENDUM
+v0.2
 
 By Justin Olbrantz (Quantam)
 
 The permanent home of this specification and others, with the latest updates, is https://github.com/TheRealQuantam/RetroDocs.
 
-This document is an addendum to the Mother Music Format specification. While that specification was based on the Japanese original, based on the assumption that romhackers would base their hacks on fan translations of the Japanese version, this addendum covers the official English prototype, commonly referred to as EarthBound Zero, that was cancelled before release but later leaked and later still reworked and released as EarthBound Beginnings on the Virtual Console. For the most part the audio systems of the Japanese and English versions are identical (apart from things being at different addresses), though the English version features an additional music track, if indeed it can be called music.
+This document is an addendum to the Mother Music Format specification. While that specification was based on the Japanese original, this addendum covers EarthBound Beginnings, the official English version on the Virtual Console which is identical to the older leaked English prototype commonly known as EarthBound Zero. For the most part the audio systems of the Japanese and English versions are identical (apart from things being at different addresses), though the English version has a couple noteworthy differences.
+
+EBB is a throwback to the bad old days of Metroid, where music code and data is duplicated in multiple ROM banks (not to be confused with track banks), though unlike Metroid in EBB the code and data do NOT have the same addresses across banks, nor are they entirely identical. EBB adds 3 new tracks to the game: 1 track resembling Giegue's Cry of unknown usage and 2 tracks that make up the new ending to the game, replacing the ending music of the original. Apparently this new ending required a new ROM bank, resulting in all the music code and global data being copied to it; however, the 2 ROM banks have completely unique music tracks and different note length and volume envelope tables. Confusingly, while 2 of the 3 new tracks are assigned the unique track numbers $32 and $33, the third is assigned to EVERY track number in the ending ROM bank from 1-$31 (the numbers of the original Mother tracks found in the other bank); for clarity let's call this "track X".
+
+In an attempt to cut down on confusion, this document is divided into 2 halves: Normal Music and Ending Music. My hope is that explicitly separating the 2 copies of all the structures will minimize the chance of confusing addresses between the 2 banks.
+
+NORMAL MUSIC
+
+The normal music bank holds all of the original Mother music plus 1 new track and 1 new envelope. All the other data is identical to Mother, but the locations in the ROM are different.
 
 Bank Configuration:
 $8000-$9fff: Bank $1c
 $a000-$bfff: Bank $1d
 
-File offsets = address + $30010
+File offsets = address + $30010.
 
 1c:9074 byte[$68?]: Note length table in frames
 
@@ -34,7 +42,7 @@ Code to load the period for a melodic key:
 8D82    ORA #$08
 8D84    STA $0781,X
 
-1c:89a7 byte[$1f?]: Noise presets table. Data actually starts at offset 1 ($b201), and is NOT an array, as some entries overlap. The first byte should always be $10 as preset 1 is rest.
+1c:89a7 byte[$1f?]: Noise presets table. Data actually starts at offset 1 ($89a8), and is NOT an array, as some entries overlap. The first byte should always be $10 as preset 1 is rest.
 
 Code to play a noise preset:
 8E2B    LDA $89A7,Y
@@ -75,7 +83,7 @@ Code to play a DMC preset if any:
 8E78    STA ApuStatus_4015
 8E7B    RTS
 
-1c:8e85 word[$1c]: Volume envelope table. Indices are 0-based, unlike in the set timbre commands and the following table. The first $1b envelopes are identical to those in Mother, but are repeated here for convenience; however, EarthBound Zero has 1 additional envelope not found in Mother, used by the new track.
+1c:8e85 word[$1c]: Volume envelope table. Indices are 0-based, unlike in the set timbre commands and the following table. The first $1b envelopes are identical to those in Mother, but are repeated here for convenience; however, EBB has 1 additional envelope not found in Mother, used by the new track.
 
 Envelope  1 @8ee9: 233456776554 ff
 Envelope  2 @8ef0: 5a9888776666655555 ff
@@ -112,7 +120,7 @@ Code to load a volume envelope address:
 8BC5    LDA $8E86,Y
 8BC8    STA $B3
 
-EarthBound Zero has the same set of pitch envelopes as Mother:
+EBB has the same set of pitch envelopes as Mother:
 89F6    LDA $B2
 89F8    CMP #$31
 89FA    BNE $89FE
@@ -439,7 +447,7 @@ Track bank 1: Header offset table 90f4, header block base 91fe:
     Square 1 @b461: | b46d
     Square 2 @b467: | b473
 
-  2d Ending @92c6:   +0  +28  b825  b817  b839  b847
+  2d Mother Ending @92c6:   +0  +28  b825  b817  b839  b847
     Square 1 @b825: b644 b896 b5e1 b6e6 b72c b78a b602 | b644
     Square 2 @b817: b605 b855 b5cb b693 | b605
     Triangle @b839: b689 b964 b5f8 b7a0 | b689
@@ -463,7 +471,7 @@ Track bank 1: Header offset table 90f4, header block base 91fe:
     Square 1 @b556: b564 | b56d
     Square 2 @b55e: | b56a
 
-Track 1 (Eight Melodies) functions the same as it did in Mother.
+Track 1 (Eight Melodies) functions the same as it did in Mother:
 
 1c:80e6 word[$a]: Base (0 melodies) track 1 triangle playlist
 1c:8238 word[8]: Full (8 melodies) track 1 triangle playlist entries 1-8
@@ -506,7 +514,7 @@ There is a very slight difference in block $ba43 of track $1e (Airplane): 2 E2 h
     Triangle @b590: | b5aa
     Noise    @b596: | b5bc
 
-Track $32 is unique to EarthBound Zero. Although this track's header comes immediately after track $31's and could barely have fit in bank 1, it is not present in the header offset table and is hard-coded in the BeginTrack function:
+Track $32 is unique to EBB. Although this track's header comes immediately after track $31's and could barely have fit in bank 1, it is not present in the header offset table and is hard-coded in the BeginTrack function:
 8AF4    CMP #$32
 8AF6    BEQ $8B06
 ...
@@ -543,3 +551,267 @@ Code to load a bank 1 track header:
 8ADE    TXA
 8ADF    CMP #$0A
 8AE1    BNE $8AD6
+
+ENDING MUSIC
+
+The ending music ROM bank holds only the 2 tracks used in the ending, and does not duplicate the tracks of the normal bank. Although the ending music bank also has low and high music banks, all entries in these banks (1-$31) point to track X.
+
+Bank Configuration:
+$8000-$9fff: Bank $1b. File offsets = address + $2e010.
+$a000-$bfff: Bank $1d. File offsets = address + $30010.
+
+1b:891a byte[$75?]: Note length table in frames. Adds in 120 BPM, causing the base offsets of subsequent tempos to shift.
+
+          0   1   2   3    4   5    6   7   8    9   a  b  c   d  e    f
+    BPM  16   8   4   2    1  4D   2D  8D  4T   8T  32
+0  (225): 4   8  16  32   64  24   48  12  10*   5*  2  1
+c  (180): 5  10  20  40   80  30   60  15  12*   6*  3* 2
+18 (150): 6  12  24  48   96  36   72  18  16    8   3  1  4   2  0  144
+28 (129): 7  14  28  56  112  42   84  21  18*   9*  3* 1  2
+35 (120): 7* 15  30  60  120  45   90  22* 20   10   3* 1  8
+42 (113): 8  16  32  64  128  48   96  24  21*  10*  4  1  2 192
+50 (100): 9  18  36  72  144  54  108  27  24     *   *
+59 (90): 10  20  40  80  160  60  120  30  26*  13*  5  1  2  23
+67 (82): 11  22  44  88  176  66  132  33  29*  14*  5* 1  2  23
+
+Code to load the current length for notes:
+8597    LDA $891A,Y
+
+Code to limit the triangle auto-release length to 15 frames ($3c quarter-frames) when in dynamic auto-release mode:
+8660    CMP #$3C
+8662    BCC $8666
+8664    LDA #$3C
+
+1b:8890 big-endian word[$43]: Key pitch table, in period register units. Identical to the normal tracks table.
+
+Code to load the period for a melodic key:
+85B8    LDA $0790
+...
+85D1    STA $0780,X
+85D4    LDA $8890,Y
+85D7    ORA #$08
+85D9    STA $0781,X
+
+1b:81f0 byte[$1f?]: Noise presets table. Identical to the normal tracks table.
+
+Code to play a noise preset:
+8680    LDA $81F0,Y
+8683    STA NoiseVolume_400C
+8686    LDA $81F1,Y
+8689    STA NoisePeriod_400E
+868C    LDA $81F2,Y
+868F    STA NoiseLength_400F
+
+Code to play a DMC preset if any:
+8693    TYA
+8694    AND #$C0
+8696    CMP #$40
+8698    BEQ $869F
+869A    CMP #$80
+869C    BEQ $86A9
+869E    RTS
+869F    LDA #$0E
+86A1    STA $B1
+86A3    LDA #$07
+86A5    LDY #$00
+86A7    BEQ $86B1
+86A9    LDA #$0E
+86AB    STA $B1
+86AD    LDA #$0F
+86AF    LDY #$02
+86B1    STA DmcLength_4013
+86B4    STY DmcAddress_4012
+86B7    LDA $07F7
+86BA    BNE $86D0
+86BC    LDA $B1
+86BE    STA DmcFreq_4010
+86C1    LDA #$0F
+86C3    STA ApuStatus_4015
+86C6    LDA #$00
+86C8    STA DmcCounter_4011
+86CB    LDA #$1F
+86CD    STA ApuStatus_4015
+86D0    RTS
+
+1b:86da word[$1e]: Volume envelope table. Envelopes $b-$f and $1a are different than for normal tracks, and $1d-$1e are new.
+
+Envelope  1 @874c: 233456776554 ff
+Envelope  2 @8753: 5a9888776666655555 ff
+Envelope  3 @8777: 111122223333444444455555556666777888 ff
+Envelope  4 @878a: f987777766655544 ff
+Envelope  5 @879c: a876 ff
+Envelope  6 @87a2: 99 ff
+Envelope  7 @8745: 235678888887 ff
+Envelope  8 @87a4: dcba998887765544 ff
+Envelope  9 @87ad: 2344333333333332 ff
+Envelope  a @879f: 7432 ff
+Envelope  b @87b6: 777665554443322211111111 f0
+Envelope  c @87c3: 54433333322222111111111111 f0
+Envelope  d @87d1: 433322222221111111111111 f0
+Envelope  e @87de: 3222222111111111111111 f0
+Envelope  f @87ea: 211111111111111111 f0
+Envelope 10 @87f4: 998877766655544433333332222222222111111111111111 f0
+Envelope 11 @883f: 23455544333322 ff
+Envelope 12 @8847: 87654321443321113221111121111111111111 ff
+Envelope 13 @880d: 6555544433333333222222221111111111111111 f0
+Envelope 14 @885b: 666542213221111121111111111111 ff
+Envelope 15 @8822: fbbaaa99999998887777776666665554444443333322222222111111 f0
+Envelope 16 @8718: 7611111431 ff
+Envelope 17 @875d: 111122223333444444455555556666777888765432 ff
+Envelope 18 @873c: 9876632287765311 f0
+Envelope 19 @8735: 233332222222 ff
+Envelope 1a @8722: 433322222222222111111111111111111111 f0
+Envelope 1b @871e: 334566 ff
+Envelope 1c @8773: 111122 ff
+Envelope 1d @8793: c876666655555544 ff
+Envelope 1e @886b: a8754321433321113221111121111111111111 ff
+
+Code to load a volume envelope address:
+8415    LDA $86DA,Y
+8418    STA $B2
+841A    LDA $86DB,Y
+841D    STA $B3
+
+Same set of pitch envelopes:
+824B    LDA $B2
+824D    CMP #$31
+824F    BNE $8253
+8251    LDA #$27
+8253    TAY
+8254    LDA $82DA,Y
+8257    PHA
+8258    LDA $07C3,X
+825B    CMP #$46
+825D    BNE $8264
+825F    PLA
+8260    LDA #$00
+8262    BEQ $82C2
+8264    PLA
+8265    JMP $82C2
+8268    LDA $B2
+826A    TAY
+826B    CMP #$10
+826D    BCS $8275
+826F    LDA $8311,Y
+8272    JMP $82C8
+8275    LDA #$F6
+8277    BNE $82C8
+8279    LDA $07C3,X
+827C    CMP #$4C
+827E    BCC $8284
+8280    LDA #$FE
+8282    BNE $82C8
+8284    LDA #$FE
+8286    BNE $82C8
+...
+8288    LDA $07D1,X <- starts here
+828B    STA $B2
+828D    LDA $B0
+828F    CMP #$20
+8291    BEQ $82A7
+8293    CMP #$A0
+8295    BEQ $82B6
+8297    CMP #$60
+8299    BEQ $8279
+829B    CMP #$40
+829D    BEQ $8268
+829F    CMP #$80
+82A1    BEQ $824B
+82A3    CMP #$C0
+82A5    BEQ $824B
+82A7    LDA $B2
+82A9    CMP #$0A
+82AB    BNE $82AF
+82AD    LDA #$00
+82AF    TAY
+82B0    LDA $8307,Y
+82B3    JMP $82C2
+82B6    LDA $B2
+82B8    CMP #$2B
+82BA    BNE $82BE
+82BC    LDA #$21
+82BE    TAY
+82BF    LDA $82E6,Y
+82C2    PHA
+82C3    TYA
+82C4    STA $07D1,X
+82C7    PLA
+82C8    PHA
+82C9    LDA $07C8,X
+82CC    BNE $82D8
+82CE    PLA
+82CF    CLC
+82D0    ADC $B1
+82D2    LDY $BE
+82D4    STA Sq0Timer_4002,Y
+82D7    RTS
+82D8    PLA
+82D9    RTS
+
+The code that determines whether a given envelope has the triangle "forever" flag set:
+8649    LDA $079C
+864C    AND #$C0
+864E    BNE $8653
+8650    TYA
+8651    BNE $865B
+8653    CMP #$C0
+8655    BEQ $8650
+8657    LDA #$FF
+
+1b:898f byte[$18]: Low track header offsets. All 0s.
+1b:89a7 byte[$19]: High track header offsets. All 0s.
+1b:89c3 struct: Single track header block for both offset tables
+1b:89cd struct: Track $33 header
+
+Track bank 0: Header offset table 898f, header block base 89c3:
+Track bank 1: Header offset table 89a7, header block base 89c3:
+   X Beginnings Ending @89c3:   +0  +28  8cbf  8cb1  8cd1  8cdd
+    Square 1 @8cbf: 8ae3 8d2c 89ed 8b80 8bc6 8c24 8a0e 8ae3 8a9b 8dfa
+    Square 2 @8cb1: 8a5c 8ceb 89d7 8b2d 8a5c 8a11 0000
+    Triangle @8cd1: 8dfa 8e24 8a04 8c3a 8b28 8b28 8e48
+    Noise    @8cdd: 8e48 8e4d 8a09 8c81 8e48 8e48 8e48
+
+   33 Beginnings Staff Roll @89cd:   +0  +18  8e6b  8e79  8e87  8e9f
+    Square 1 @8e6b: 8ebb 9028 937e 93b8 | 9403
+    Square 2 @8e79: 8efb 90aa 913d 916b | 9445
+    Triangle @8e87: 8f46 8f76 8f76 8fe8 9005 8fe8 900f 91e4 9229 | 8eaf
+    Noise    @8e9f: 8f86 8faa 9279 929f 9333 | 8eb5
+	
+As with normal track $32, ending track $33 is not present in the header offset tables and is hard-coded in the BeginTrack function:
+8349    CMP #$33
+834B    BEQ $835B
+...
+835B    LDX #$00
+835D    LDY #$00
+835F    LDA $89CD,Y
+8362    STA $0790,X
+8365    INY
+8366    INX
+8367    TXA
+8368    CMP #$0A
+836A    BNE $835F
+836C    JMP $8386
+
+Code to load a bank 0 track header:
+8373    LDA $898F,Y
+8376    TAY
+8377    LDX #$00
+8379    LDA $89C3,Y
+837C    STA $0790,X
+837F    INY
+8380    INX
+8381    TXA
+8382    CMP #$0A
+8384    BNE $8379
+
+Code to load a bank 1 track header:
+8325    LDA $89A7,Y
+8328    TAY
+8329    LDX #$00
+832B    LDA $89C3,Y
+832E    STA $0790,X
+8331    INY
+8332    INX
+8333    TXA
+8334    CMP #$0A
+8336    BNE $832B
