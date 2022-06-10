@@ -1,5 +1,5 @@
 KID ICARUS MUSIC TABLE PATCH
-v0.1
+v1.0
 
 By Justin Olbrantz (Quantam)
 
@@ -26,12 +26,13 @@ The tracks are as follows:
 11 (b) Title Theme    +5b:  f6:3  f8:3
 
 Table legend:
+	Off: Offset of the track header in the track header block
 	Sq1T: Square 1 channel timbre settings. The left side is the ctrl 1 value, the right side is the envelope number if any.
 	Sq2T: Square 2 channel timbre settings.
 	
 The ctrl 1 values have the format  ddLV vvvv:
 	d: Duty cycle. 0: 12.5%, 1: 25%, 2: 50%, 3: 75%
-	L: Disable length counter and play note forever. This is mostly irrelevant since notes in Metroid are set to play for 127 frames, which is longer than the longest length in the length table.
+	L: Disable length counter and play note forever. This is mostly irrelevant since notes in Kid Icarus are set to play for 127 frames, which is longer than the longest length in the length table.
 	V: Specifies that v is the volume and not decay rate. Always set.
 	v: The volume
 	
