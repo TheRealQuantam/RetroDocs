@@ -1,5 +1,5 @@
 SUPER MARIO BROS. 3 MUSIC FORMAT
-v1.0
+v1.1 Beta
 
 By Justin Olbrantz (Quantam)
 
@@ -9,18 +9,18 @@ This specification describes the music engine used by Super Mario Bros. 3, the l
 
 First, R&D4 engines are EXTREMELY basic. While engines by other companies typically have robust, flexible engines designed to give maximum flexibility to the composer and allow the engine to be used with little to no modification in many games with many types of music, R&D4 engines are typically hybrid systems that combine basic note data with hard-coded hardware settings that provide the special sauce for each game's distinctive sound. These engines typically only have 3 event types: notes, rests, and set note length commands; if you're lucky there might be a set timbre or portamento command, as in SMB3, or timbre might be hard-coded in the engine, as in earlier R&D4 games.
 
-Second, R&D4 uses a track format unlike anything I've seen from other companies or groups, a format which seems likely to have been designed around streaming music data from a slow medium e.g. the Famicom Disk System, which many R&D4 games were made for, to a memory buffer and seems an inefficient choice for a memory-mapped cartridge system like the NES. While it is standard practice to separate track data into hardware channels to allow for compression structures such as loops to take full advantage, the primary division of data in R&D4 engines is time. In a structure reminiscent of trackers such as FamiTracker, data for all channels is bundled together into blocks of varying duration, and these blocks are then strung together into a complete track by a global block playlist; segments of music data are repeated not by any kind of loop structure, but simply by putting the block in the playlist multiple times. This rigid structure places many constraints on romhackers that are absent in non-R&D4 formats.
+Second, R&D4 uses a track format unlike anything I've seen from other companies or groups - a format which seems to have anachronistic origins tracing back to Nintendo's very first NES game. While it is standard practice to separate track data into hardware channels to allow for compression structures such as loops to take full advantage, the primary division of data in R&D4 engines is time. In a structure reminiscent of trackers such as FamiTracker, data for all channels is bundled together into blocks of varying duration, and these blocks are then strung together into a complete track by a global block playlist; segments of music data are repeated not by any kind of loop structure, but simply by putting the block in the playlist multiple times. This rigid structure places many constraints on romhackers that are absent in non-R&D4 formats.
 
 Basic Features:
 - Single byte notes and rests, though current note length must be previously defined with an additional byte
-+ Staff notation style divisive rhythm system
++ Hybrid tempo system that mimics staff notation style divisive rhythm
 	- 5-octave chromatic scale from A#1 (58.27 Hz) to D7 (2349 Hz) for square wave (triangle is 1 octave lower).
 	- 13 note lengths from whole notes through 16th notes with dots and triplets for some lengths for all tempos, plus several tempo-specific lengths
 	- 10 tempos ranging from 112.5 to 450 BPM
 - 5 channels - square 1, square 2, triangle, noise, and DMC - each with separate event sequences
 + Multi-timbre support
-	- 8 square timbres with non-looping duty cycle + volume envelopes, plus 1 hard-coded timbre using pitch slide
-	- 4 percussive noise presets
+	- 8 square timbres with non-looping duty cycle/volume envelopes, plus 1 hard-coded timbre using pitch slide
+	- 3 percussion noise presets
 	- 16 DMC percussion presets on 9 instruments
 - Rising portamento for the square channels
 + Tracker-like block structure
@@ -33,25 +33,31 @@ Some general notes in interpreting this specification:
 - All word (16-bit) values in the format are little-endian, with the least-significant byte preceding the most-significant.
 - All values are unsigned unless noted otherwise.
 - All numbers preceded by $ are hex, and in general unless they represent byte strings or addresses most numbers without $ are in decimal.
-- Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). However, when it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
-- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could match 0n). These lists are ordered such that the first matching command is the correct interpretation.
+- Byte values are generally shown as hex "ab" where "a" is the high nibble and "b" is the low nibble (standard mathematical digit ordering). When it is necessary to show bit fields, bytes are shown in binary as "abcd efgh" (again mathematical order); in bit fields "-" means that the value of the bit does not matter in the given context.
+- Many command lists (e.g. channel data commands) are encoded ambiguously, where 1 value could be interpreted as multiple different commands (e.g. 00 could also match 0n). These lists are ordered such that the first matching command is the correct interpretation.
 - A wave's "period" is inversely proportionate to its frequency; in the NES the square wave channel's period = 1789773/16 / frequency (triangle channel is 1 octave lower for the same period), and the value actually written to the hardware is 1 less than this. Here "pitch" is used as proportionate to key number, is what humans perceive, and frequency doubles (period halves) with each pitch increase of 1 octave. As such "linear period", "linear frequency", and "linear pitch" are all very different things, and linear pitch is what sounds linear to the ear.
 
 Track Format
 
-Tracks are formatted in a 4-level hierarchical structure.
+Tracks are formatted in a 4-level hierarchical structure - 5 if you include the individual channels:
+
+1. Track table
+2. Block header offset table
+3. Block header blocks
+4. Music blocks
+5. Channel data
 
 At the highest level is the track table. Each track entry consists of 3 values (though in fact it's actually 3 parallel arrays of values): first block index, last block index, and loop block index, which define which blocks belong to the track and how to loop at the end of the track. However, as block headers (to be described shortly) are ALSO packed into 256-byte blocks, there are in fact 2 track tables needed to hold all the tracks for the game, which are here referred to as bank 1 (or the "low" bank) and bank 2 (the "high" bank); note that this use of "bank" is distinct from the ROM bank, and the 2 meanings generally do not coincide.
 
-The track block indices index into the second level of structure: the block offset table. This table is an array of bytes which specify the location of each block header within the block of block headers (*cough*); it is because these are byte-sized offsets within the block that there can only be so many block headers in said block, requiring 2 different track tables and likewise 2 different track offset tables. This table also doubles as the playlist of blocks: a track begins at the specified first block and proceeds sequentially through this table until it finishes playing the specified last block, at which point the track either ends or loops back to the specified loop block.
+The track block indices index into the second level of structure: the block header offset table. This table is an array of bytes which specify the location of each block header within the block of block headers (*cough*); it is because these are byte-sized offsets within the block that there can only be so many block headers in said block, requiring 2 different track tables and likewise 2 different block offset tables. This table also doubles as the playlist of blocks: a track begins at the specified first block and proceeds sequentially through this table until it finishes playing the specified last block, at which point the track either ends or loops back to the specified loop block.
 
-The first 7 entries in the bank 1 block offset table are fanfares. Fanfares are short, non-looping, single-block tracks that interrupt side-scrolling background music to play in events such as death or level completion and the prior track is resumed afterwards (though the restart mechanism only supports bank 2 tracks and bank 1 tracks 9 and $a). Fanfares 1-7 are mapped directly to block offset entries 1-7 in bank 1, and have no separate track table. Fanfare 6 is the "time is running out" fanfare, and is hard-coded in the engine to increase the tempo of the track it resumes to by 1 level (see the list of tempos) until the end of that track.
+The first 8 entries in the bank 1 block offset table are fanfares, though #8 is in fact an empty track used to stop music playback. Fanfares are short, non-looping, single-block tracks that interrupt side-scrolling background music to play in events such as death or level completion and the prior track is usually resumed afterwards (though the restart mechanism only supports bank 2 tracks and bank 1 tracks 9 and $a). Fanfares 1-8 are mapped directly to block offset entries 1-8 in bank 1, and have no separate track table. Fanfare 7 is the "time is running out" fanfare, and is hard-coded in the engine to increase the tempo of the track it resumes to by 1 level (see the list of tempos) until the end of that track.
 
 The third layer of structure, then, are the block headers. These headers specify 3 key pieces of information: the address of the block, the tempo of the block (R&D4 engines have no explicit commands to set the tempo, only the value in the block header), and the starting locations of the square 1, triangle, noise, and DMC channel data within the block; square 2 is the master channel and is always located at the very beginning of the block.
 
-This leaves a small window for shenanigans. It might occasionally be useful to share data from specific channels between blocks; this is done in 1 track from SMB3, for instance. This is possible in a very limited way: it is possible for 2 block headers to refer to the same block data, but provide different tempo or channel data offsets. This requires careful layout of data as all data used by a block header be in a 256-byte window (we'll call it a virtual block). This is especially tricky since the block address also specifies the square 2 data location, requiring the square 2 data to always precede the data for the other channels for all virtual blocks and the offsets to the other channels to be relative to the start of the square 2 channel.
+This leaves a small window for shenanigans. It might occasionally be useful to share data from specific channels between blocks; this is done in 1 track from SMB3, for instance. This is possible in a very limited way: it is possible for 2 block headers to refer to the same block data by address, but provide different tempo or channel data offsets. This requires careful layout of data as all data used by a block header must be in a 256-byte window (we'll call it a virtual block). This is especially tricky since the block address also specifies the square 2 data location, requiring the square 2 data to always precede the data for the other channels for all virtual blocks and the offsets to the other channels to be relative to the start of the square 2 channel.
 
-However, the reason the square 2 channel is called the master channel goes beyond its location within the block: the square 2 channel also determines the duration of the block, and when the square 2 channel data for a block ends, so too does the block. The effect of shorter durations between channels varies by channel. The square 1 and triangle channels MUST be the same duration as the square 2 channel. But for the noise and DMC channels, given how common it is to compose track with short, repetitive drum loops underneath more lengthy melodies, the noise and DMC channel data will be looped infinitely until the block is ended by the square 2 master channel.
+However, the reason the square 2 channel is called the master channel goes beyond its location within the block: the square 2 channel is the only channel whose block data is explicitly terminated and thus determines the duration of the block as a whole; when the end of the square 2 channel data for a block is reached, all channels advance to the next block (if any) together. The effect of shorter durations between channels varies by channel. The square 1 and triangle channels MUST be the same duration as the square 2 channel. But for the noise and DMC channels, given how common it is to compose tracks with short, repetitive drum loops underneath more lengthy melodies, the noise and DMC channel data will be looped infinitely until the end of the square 2 block data is reached.
 
 To summarize, a virtual block:
 - Is defined by a block header
@@ -59,22 +65,22 @@ To summarize, a virtual block:
 - Defines the locations of each channel's data within the virtual block
 - May be of any length of time, but...
 - May be at most 256 bytes for all channel data combined and begins with the square 2 data
-- Will repeat its noise and DMC channel data if said data is shorter than the square 2 date, allowing short drum loops to be used under longer melodies
+- Will repeat its noise and DMC channel data if said data is shorter than the square 2 data, allowing short drum loops to be used under longer melodies
 - May overlap with other virtual blocks if you're evil
 - Is a true "block" if it does not overlap any other blocks
 
 The following additional constraints also exist to make romhacking harder:
 - 2 banks of tracks
-- 15 tracks in bank 1, 11 tracks in bank 2
-- First 7 entries in the block header offset table for bank 1 are fanfares
-- Bank 1 has space for $2c entries in its block header offset table (i.e. the playlist size) and $24 block headers, bank 2 has space for $2d entries in its block header offset table and $24 block headers (though 2 block headers partially overlap).
-- Theoretical maximum of $100 block header offset entries and $25 block headers per bank if structures are relocated
+- 15 tracks in bank 1, 12 tracks in bank 2 (though track 12 is unused)
+- First 8 entries in the block header offset table for bank 1 are fanfares
+- Bank 1 has space for $2c entries in its block header offset table (i.e. the playlist size) and $24 block headers (though 2 headers partially overlap), bank 2 has space for $2d entries in its block header offset table and $25 block headers.
+- Theoretical maximum of $ff block header offset entries and $25 block headers per bank if structures are relocated
 
-All music code and data is stored in bank $1c at $a000-bfff and bank $1f at $e000-$ffff. To convert addresses to file offsets:
-	For addresses $a000-$bfff: file offset = addr + $2e010
-	For addresses $e000-$ffff: file offset = addr + $34010
+All music code and data is stored in banks $1c/$1d at $a000-dfff and bank $1f at $e000-$ffff. To convert addresses to file offsets:
+	For addresses $a000-$dfff: file offset = addr + $2e010
+	For addresses $e000-$ffff: file offset = addr + $30010
 
-IMPORTANT NOTE: The SMB3 engine is very unusual in that it uses 1-based indices for its arrays such as the track list, and it is documented likewise here. This means all array addresses, unless noted otherwise, are actually 1 element BEFORE the first element in the list, and numbers such as track numbers begin with 1.
+IMPORTANT NOTE: The SMB3 engine is very unusual in that it uses 1-based indices for its arrays such as the track list, and it is documented likewise here. This means all array addresses given, unless noted otherwise, are actually 1 element BEFORE the first element in the list, and numbers such as track numbers begin with 1.
 
 Block Header Structure:
 	+0 byte: tttt 0000: Tempo index t. Tempos (in BPM): 0: 112.5, 1: 120, 2: 128.6, 3: 150, 4: 180, 5: 200, 6: 225, 7: 257.1, 8: 300, 9: 450
@@ -95,17 +101,19 @@ B1 AB: Block (and square 2 channel data) start address $abb1
 
 Bank 1:
 1C:a73f byte[$2c]: Block header offset table
-1C:a76c structs: Block headers block. Note that this is NOT an array, and block headers are not necessarily aligned.
-1C:a86c byte[$f]: First track block index
-1C:a87b byte[$f]: Last track block index
-1C:a88a byte[$f]: Loop track block index
+1C:a76c structs ($101 bytes): Block headers block. Note that this is NOT an array, and block headers are not necessarily aligned.
+1C:a86c byte[$f]: 0-based first track block index
+1C:a87b byte[$f]: 0-based last track block index
+1C:a88a byte[$f]: 0-based loop track block index
 
 Bank 2:
-1C:b3ff byte[$2d?]: Block header offset table
-1C:b42d structs: Block headers block. Same caveats.
-1C:b52f byte[$c]: First track block index
-1C:b53b byte[$c]: Last track block index
-1C:b547 byte[$c]: Loop track block index
+1C:b3ff byte[$2d]: Block header offset table
+1C:b42d structs ($103 bytes): Block headers block. Same caveats.
+1C:b52f byte[$c]: 0-based first track block index
+1C:b53b byte[$c]: 0-based last track block index
+1C:b547 byte[$c]: 0-based loop track block index
+
+NOTE: The track block indices given in the above arrays are 0-based, while the block header offset table (as well as the track block index tables themselves) is accessed with 1-based indices. E.g. for bank 1's first track, 1C:b530 (index 1 of the first track block index table) = 8; this block's header offset can then be found at 1C:a748 (index 9 of the block header offset table).
 
 See the Additional Tables section for information on relocating these structures.
 
@@ -113,7 +121,7 @@ Time and Tempo
 
 As already stated, SMB3 supports the following tempos in BPM: 0: 112.5, 1: 120, 2: 128.6, 3: 150, 4: 180, 5: 200, 6: 225, 7: 257.1, 8: 300, 9: 450.
 
-The SMB3 engine uses a hybrid of tempo and frame counting. Note lengths are converted at note start to frames the note should play at that tempo. This produces lengths of fractional frames at some length/tempo combinations, which the engine cannot deal with. This is handled by the primary/secondary system, in which the relevant lengths are assigned 2 length codes, a primary and a secondary, and a complete tuplet using these codes will produce the correct number of frames the tuplet should play combined. A triplet is made of 2 primary and 1 secondary length notes. A doublet of 16ths has 1 primary and 1 secondary length note. At some tempos this can be exploited for a very slight swing rhythm; for more information see the full note length table in Additional Tables.
+The SMB3 engine uses a hybrid of tempo and frame counting. Note lengths are converted at note start to frames the note should play at that tempo. This produces lengths of fractional frames at some length/tempo combinations, which the engine cannot deal with. This is handled by the primary/secondary system, in which the relevant lengths are assigned 2 length codes, a primary and a secondary, and a complete tuplet using these codes will produce the correct number of frames the tuplet should play combined. A triplet is made of 2 primary and 1 secondary length notes. A doublet of 16ths has 1 primary and 1 secondary length note, though at tempos where the primary and secondary lengths are the same, Kondo often does not distinguish between the 2. At some tempos this can be exploited for a very slight swing rhythm; for more information see the full note length table in Additional Tables.
 
 Note Length Codes (pairs are primary/secondary):
 
@@ -137,7 +145,7 @@ SMB3 uses 3 different key sets: 1 for the melodic channels, 1 for the noise chan
 The melodic key table, giving octave numbers for the square channels:
 
 Oct   C  C#   D  D#   E   F  F#   G  G#   A  A#   B  Max Detune at Bx
-1:                                           7e* 7f* 0.96 cents  
+1:                                       7d* 7e* 7f* 0.96 cents  
 2:    0*  1   2   3   4   5   6   7   8   9   a   b  1.91 cents
 3:    c   d   e   f  10  11  12  13  14  15  16  17  3.83 cents
 4:   18  19  1a  1b  1c  1d  1e  1f  20  21  22  23  7.66 cents
@@ -150,7 +158,12 @@ Notes:
 - Detune figures are for the actual octaves listed. As such for the triangle channel the appropriate detune value is in the row above the corresponding row of key values, e.g. the detune value for $17 (B2) on triangle would actually be 1.91 cents.
 - Keys with * are an exploit that requires that the note event either IMMEDIATELY follow an attributes command or be the target key of a portamento. Additionally, key 0 is ONLY possible on square 2 channel.
 
-The noise channel has 4 presets, though it is not readily apparent what they are supposed to be, so they won't be listed.
+The noise channel has 3 presets. It is not readily apparent what they are supposed to be, so only their basic characteristics will be given. Note that pitch is the value written to the NES' registers, and that number of frames refers to the maximum length of the sound and it will be cut short if the note duration is shorter:
+
+#  Vol  Pitch  # Frames
+1  $e   3      2
+2  $f   $a     2
+3  $f   2      $a
 
 The preset list for the DMC channel is as follows:
 	1: Bass/kick drum
@@ -172,21 +185,21 @@ The preset list for the DMC channel is as follows:
 	
 Channel Data Format
 
-Compared to other engines, and even compared to the track structure, channel data is extremely simple. The format has the same basic structure but differs slightly between channels, but the basic 3 commands are the same: play note, rest, and set note attributes, which sets the length for subsequent notes/rests and for the square channels the timbre. The square channels additionally have the ability to perform portamento between 2 notes, but this is limited to rising pitch.
+Compared to other engines, and even compared to the track structure, channel data is extremely simple. The format has the same basic structure but differs slightly between channels, but the basic 3 commands are the same: play note, rest, and set note attributes, which sets the length for subsequent notes/rests and for the square channels the timbre. The square channels additionally have the ability to perform portamento between 2 notes, but this has limitations.
 
 Square Channel Data Format:
 00: Channel-specific:
 	Square 2: End of block
-	Square 1: Set ctrl 1 to $83 and set ctrl 2 to $94 for the rest of the block. This is used in fanfare 1 (death).
-7e: Rest for the current note duration. Sets the envelope to sustain: the last sample of the envelope, which is silence for most envelopes, is continued until the next note.
+	Square 1: Set ctrl 2 to $94 for the rest of the block. This is used in fanfare 1 (death).
+7e: Rest for the current note duration. Sets the envelope to sustain: the last sample of the envelope, which is silence for most envelopes, is continued until the next note command.
 ff 0KKK KKK0: Portamento target:
-	IMMEDIATELY following a note: Modifies the previous note (only a single note duration occurs for the whole thing) to play linear period portamento from previous key k to K (K > k). The pitch rises (period decreases) at a rate of 3/4 period units per frame. Portamento will abruptly stop at a $100 period boundary (around D2, F2, A2, D3, A3, A4).
+	IMMEDIATELY following a note: Modifies the previous note (only a single note duration occurs for the whole thing) to play linear period portamento from previous key k to K (K > k). The pitch rises (period decreases) at a rate of 3/4 period units per frame. Portamento will NOT work properly (if at all) if the target key is lower than the base key or if the portamento crosses a $100-period boundary above B1, below D2, ~F2, below A2, below D3, below A3, or below A4.
 	After anything else: Does nothing and should not be used
-1ttt LLLL: Note attributes. Sets timbre number to t (0-7) and note length code L for subsequent notes. MUST NOT be immediately followed by another attributes command.
+1ttt LLLL: Note attributes. Sets timbre number to t (0-7) and note length code to L for subsequent notes. MUST NOT be immediately followed by another attributes command.
 0kkk kkk0: Play key k for the current note duration
 
 Triangle Channel Data Format:
-00: Pseudo-rest for the current note duration. Silences channel after 1/4 frame. Possibly a bug.
+00: Pseudo-rest for the current note duration. Silences channel after 1/4 frame. Probably a bug rather than a feature.
 7e: Rest for the current note duration. Silences channel.
 8L (1--- LLLL): Set note length code to L for subsequent notes, subject to auto-release. MUST NOT be immediately followed by another length command.
 0kkk kkk0: Play key k for the current note duration
@@ -195,7 +208,7 @@ Noise Channel Data Format:
 00: Loop. Restart noise events for this block.
 01: Rest for the current note duration. Silences channel.
 8L (1--- LLLL): Set note length code to L for subsequent notes. MUST NOT be immediately followed by another length command.
-0000 kkk-: Play noise preset k (1-4) for the current note duration.
+0000 0kk-: Play noise preset k (1-3) for the current note duration.
 
 DMC Channel Data Format:
 00: Loop. Restart DMC events for this block.
@@ -226,7 +239,7 @@ Square 1 Channel (the tempo for this block is 0: 112.5 BPM):
 	k = $31: C#6
 94 (1001 0100): Set attributes
 	t = 1: Timbre 1
-	L = 4: 8th note, 16 frames at this tempo
+	L = 4: 8th note, 16 frames at this tempo. Short envelope will be used.
 7e: Rest
 98 (1001 1000): Set attributes
 	t = 1: Timbre 1
@@ -265,11 +278,11 @@ As can be seen, square 1 and triangle channels are never explicitly terminated, 
 
 Square Wave Timbres
 
-Square wave timbres in SMB3 consist of a simple non-looping envelope of ctrl 1 ($4000, $4004) values including both duty cycle and volume; each value in the envelope table is played for 1 frame, and the final value is sustained indefinitely (it is also used when a rest is encountered). There are long and short variants for each timbre: a short $17-entry envelope for notes shorter than $13 frames and a long $40-entry envelope for longer notes; which length is used is selected when each note begins and the length in frames is calculated. Notably, SMB3 envelope values are stored in reverse order, where entry 0 is the last entry. Interestingly, unlike most such envelopes, some SMB3 timbres actually vary their duty cycles during their early decay phase.
+Square wave timbres in SMB3 consist of a simple non-looping envelope of ctrl 1 ($4000, $4004) values including both duty cycle and volume; each value in the envelope table is played for 1 frame, and the final value is sustained indefinitely (it is also used when a rest is encountered). There are long and short variants for each timbre: a short $17-entry envelope for notes shorter than $13 frames and a long $40-entry envelope for longer notes; which length is used is selected when each note begins and the length in frames is calculated. Notably, SMB3 envelope values are stored in reverse order, where entry 0 is the last entry. Interestingly, unlike most such envelopes in other engines, some SMB3 timbres actually vary their duty cycles during their early decay phase.
 
 Each byte value in the envelope has the format ddLV vvvv:
 	d: Duty cycle. 0: 12.5%, 1: 25%, 2: 50%, 3: 75%
-	L: Disable length counter and play note forever. Oddly, this is never set in SMB3, giving all notes a maximum duration of 127 frames. For SMB3 this has minimal impact, however, as only whole notes at the slowest tempo exceed this (128 frames).
+	L: Disable length counter and play note forever. Oddly, this is never set in SMB3, giving all notes a maximum duration of 127 frames. For SMB3 this generally has minimal impact, as only whole notes at the slowest tempo exceed this (128 frames), but this effect can be seen when a sustaining envelope note is followed by 1 or more rests.
 	V: Specifies that v is the volume and not decay rate. Always set.
 	v: The volume
 	
@@ -292,7 +305,7 @@ Short timbre 0 envelope:
 
 90 (1001 0000):
 	d = 2: Duty cycle of 50%
-	v = 0: Silence
+	v = 0: Silence, making this a non-sustaining envelope
 
 ADDITIONAL TABLES
 
@@ -460,132 +473,136 @@ Block  1 (1)  @+8d: 3 abb1 (38bc1) +26 +11  +0 +38
 Note: Duplicate (repeated) block headers within the same track are abbreviated to make it more obvious that they are duplicates.
 
 Bank 1 @ 1c:a76c (3877c)  a73f (3874f) a86c (3887c) a87b (3888b) a88a (3889a):
-    Fanfare 1: Death
-        Block  1 (1)  @+8d: 3 abb1 (38bc1) +26 +11  +0 +38
-    Fanfare 2: Game Over
-        Block  2 (2)  @+a6: 3 ab35 (38b45) +20 +12  +0  +0
-    Fanfare 3: Recovered Scepter
-        Block  3 (3)  @+94: 3 aae7 (38af7) +21 +11  +0 +31
-    Fanfare 4: Rescued Kings
-        Block  4 (4)  @+ad: 4 abff (38c0f) +4d +27  +0 +73
-    Fanfare 5: ??
-        Block  5 (5)  @+fa: 3 a8d0 (388e0) +6f +4c  +0 +ba
-    Fanfare 6: Stage Clear
-        Block  6 (6)  @+9b: 3 a9f7 (38a07) +1f +10 +2e +3c
-    Fanfare 7: Hurry Up
-        Block  7 (7)  @+86: 8 ab65 (38b75) +35 +18  +0  +0
+        Fanfare 1: Death
+                Block  1 (1)  @+8d: 3 abb1 (38bc1) +26 +11  +0 +38
+        Fanfare 2: Game Over
+                Block  2 (2)  @+a6: 3 ab35 (38b45) +20 +12  +0  +0
+        Fanfare 3: Recovered Scepter
+                Block  3 (3)  @+94: 3 aae7 (38af7) +21 +11  +0 +31
+        Fanfare 4: Rescued Kings
+                Block  4 (4)  @+ad: 4 abff (38c0f) +4d +27  +0 +73
+        Fanfare 5: Bowser's Fall
+                Block  5 (5)  @+fa: 3 a8d0 (388e0) +6f +4c  +0 +ba
+        Fanfare 6: Stage Clear
+                Block  6 (6)  @+9b: 3 a9f7 (38a07) +1f +10 +2e +3c
+        Fanfare 7: Hurry Up
+                Block  7 (7)  @+86: 8 ab65 (38b75) +35 +18  +0  +0
+        Fanfare 8: Silence
+                Block  8 (8)  @+a2: 6 a8ad (388bd)  +0 +30 +35 +ab
 
-    Track 1 (1): Grass Land (World 1)
-        Block  8 (8)  @+a2: 6 a8ad (388bd)  +0 +30 +35 +ab (loop point)
-        Block  9 (9)  @+3f: 5 af3b (38f4b) +7f +31 +b5 +ce
-    Track 2 (2): Desert Land (World 2)
-        Block 10 (a)  @+54: 5 b024 (39034) +40 +1c +5b +84 (loop point)
-    Track 3 (3): Water Land (World 3)
-        Block 11 (b)  @+31: 0 ad02 (38d12) +1b  +e +2f +33 (loop point)
-        Block 12 (c)  @+46: 3 adce (38dde) +40 +37 +60 +72
-    Track 4 (4): Giant Land (World 4)
-        Block 13 (d)  @+4d: 3 ae54 (38e64) +40 +37 +60 +85 (loop point)
-    Track 5 (5): Sky Land Ground (World 5)
-        Block 14 (e)  @+23: 3 ac99 (38ca9) +20  +a +61 +65
-        Block 15 (f)  @+38: 3 adc0 (38dd0)  +0  +0  +0  +7 (loop point)
-    Track 6 (6): Ice Land (World 6)
-        Block 16 (10) @+2a: 3 ad3b (38d4b) +56 +2d +7a +81 (loop point)
-    Track 7 (7): Pipe Land (World 7)
-        Block 17 (11) @+6a: 3 b0c9 (390d9) +25 +12 +2a +35 (loop point)
-        Block 18 (12) @+71: 1 b10a (3911a) +56 +17 +64 +7d
-    Track 8 (8): Dark Land (World 8)
-        Block 19 (13) @+78: 1 b137 (39147) +29 +15 +37 +50 (loop point)
-    Track 9 (9): Sky Land Sky (World 5)
-        Block 20 (14) @+62: 0 af15 (38f25) +13  +a  +0 +1c (loop point)
-    Track 10 (a): Star Power
-        Block 21 (15) @+1c: 0 aa3f (38a4f) +2e +19  +0  +0 (loop point)
-    Track 11 (b): Warp Zone
-        Block 22 (16) @+7f: 8 aa8e (38a9e) +37 +1a +49 +4f
-        Block 23 (17) @+15: 0 a990 (389a0)  +0  +b  +0  +0 (loop point)
-    Track 12 (c): Music Box
-        Block 24 (18) @+1c: 0 aa3f (38a4f) +2e +19  +0  +0 (loop point)
-        Block 25 (19) @ +0: 0 a9a7 (389b7)  +0 +13  +0  +0
-        Block 26 (1a) @ +7: 0 a9c6 (389d6)  +0  +f  +0  +0
-        Block 27 (1b) @ +0
-    Track 13 (d): Cursed Kings
-        Block 28 (1c) @ +e: 0 a9e2 (389f2)  +0  +a  +0  +0 (loop point)
-    Track 14 (e): Spade House
-        Block 29 (1d) @+b4: 3 a89a (388aa) +29 +14  +0  +0 (loop point)
-    Track 15 (f): Ending
-        Block 30 (1e) @+5b: 5 aefe (38f0e)  +7  +4 +10  +0
-        Block 31 (1f) @+bb: 0 c27a (3a28a)  +0 +1b  +0  +0
-        Block 32 (20) @+bb
-        Block 33 (21) @+c2: 0 c2a6 (3a2b6)  +0 +21  +0  +0
-        Block 34 (22) @+bb
-        Block 35 (23) @+c9: 3 c2d8 (3a2e8) +23 +12 +33 +40 (loop point)
-        Block 36 (24) @+d0: 3 c333 (3a343) +45 +23 +65 +72
-        Block 37 (25) @+d0
-        Block 38 (26) @+d7: 3 c3b2 (3a3c2) +1f +10 +32 +3f
-        Block 39 (27) @+d7
-        Block 40 (28) @+de: 3 c3fe (3a40e) +39 +1d +5e +6b
-        Block 41 (29) @+e5: 3 c476 (3a486) +6d +24 +a4 +b1
-        Block 42 (2a) @+ec: 3 c534 (3a544) +24  +c +37 +44
-        Block 43 (2b) @+e5
+        Track 1 (1): Grass Land (World 1)
+                Block  9 (9)  @+3f: 5 af3b (38f4b) +7f +31 +b5 +ce (loop point)
+                Block 10 (a)  @+54: 5 b024 (39034) +40 +1c +5b +84
+        Track 2 (2): Desert Land (WOrld 2)
+                Block 11 (b)  @+31: 0 ad02 (38d12) +1b  +e +2f +33 (loop point)
+        Track 3 (3): Water Land (WOrld 3)
+                Block 12 (c)  @+46: 3 adce (38dde) +40 +37 +60 +72 (loop point)
+                Block 13 (d)  @+4d: 3 ae54 (38e64) +40 +37 +60 +85
+        Track 4 (4): Giant Land (World 4)
+                Block 14 (e)  @+23: 3 ac99 (38ca9) +20  +a +61 +65 (loop point)
+        Track 5 (5): Sky Land Ground (World 5)
+                Block 15 (f)  @+38: 3 adc0 (38dd0)  +0  +0  +0  +7
+                Block 16 (10) @+2a: 3 ad3b (38d4b) +56 +2d +7a +81 (loop point)
+        Track 6 (6): Ice Land (World 6)
+                Block 17 (11) @+6a: 3 b0c9 (390d9) +25 +12 +2a +35 (loop point)
+        Track 7 (7): Pipe Land (World 7)
+                Block 18 (12) @+71: 1 b10a (3911a) +56 +17 +64 +7d (loop point)
+                Block 19 (13) @+78: 1 b137 (39147) +29 +15 +37 +50
+        Track 8 (8): Dark Land (World 8)
+                Block 20 (14) @+62: 0 af15 (38f25) +13  +a  +0 +1c (loop point)
+        Track 9 (9): Sky Land Sky (World 5)
+                Block 21 (15) @+1c: 0 aa3f (38a4f) +2e +19  +0  +0 (loop point)
+        Track 10 (a): Star Power
+                Block 22 (16) @+7f: 8 aa8e (38a9e) +37 +1a +49 +4f (loop point)
+        Track 11 (b): Warp Zone
+                Block 23 (17) @+15: 0 a990 (389a0)  +0  +b  +0  +0
+                Block 24 (18) @+1c: 0 aa3f (38a4f) +2e +19  +0  +0 (loop point)
+        Track 12 (c): Music Box
+                Block 25 (19) @ +0: 0 a9a7 (389b7)  +0 +13  +0  +0 (loop point)
+                Block 26 (1a) @ +7: 0 a9c6 (389d6)  +0  +f  +0  +0
+                Block 27 (1b) @ +0
+                Block 28 (1c) @ +e: 0 a9e2 (389f2)  +0  +a  +0  +0
+        Track 13 (d): Cursed Kings
+                Block 29 (1d) @+b4: 3 a89a (388aa) +29 +14  +0  +0 (loop point)
+        Track 14 (e): Spade House
+                Block 30 (1e) @+5b: 5 aefe (38f0e)  +7  +4 +10  +0 (loop point)
+        Track 15 (f): Ending
+                Block 31 (1f) @+bb: 0 c27a (3a28a)  +0 +1b  +0  +0
+                Block 32 (20) @+bb
+                Block 33 (21) @+c2: 0 c2a6 (3a2b6)  +0 +21  +0  +0
+                Block 34 (22) @+bb
+                Block 35 (23) @+c9: 3 c2d8 (3a2e8) +23 +12 +33 +40
+                Block 36 (24) @+d0: 3 c333 (3a343) +45 +23 +65 +72 (loop point)
+                Block 37 (25) @+d0
+                Block 38 (26) @+d7: 3 c3b2 (3a3c2) +1f +10 +32 +3f
+                Block 39 (27) @+d7
+                Block 40 (28) @+de: 3 c3fe (3a40e) +39 +1d +5e +6b
+                Block 41 (29) @+e5: 3 c476 (3a486) +6d +24 +a4 +b1
+                Block 42 (2a) @+ec: 3 c534 (3a544) +24  +c +37 +44
+                Block 43 (2b) @+e5
+                Block 44 (2c) @+f3: 3 c585 (3a595) +23  +f +3d +4a
 				
 Bank 2 @ 1c:b42d (3943d)  b3ff (3940f) b52f (3953f) b53b (3954b) b547 (39557):
-    Track 1 (1): Overworld Theme 1
-        Block  0 (0)  @+f4: 7 f870 (3f880) +b7 +65 +22 +6e
-        Block  1 (1)  @+69: 3 b554 (39564) +29 +18 +41 +45 (loop point)
-        Block  2 (2)  @+70: 3 b5a9 (395b9) +54 +2c +af +be
-        Block  3 (3)  @+77: 3 b5c3 (395d3) +50 +2b +95 +a4
-        Block  4 (4)  @+70
-        Block  5 (5)  @+7e: 3 b629 (39639) +21 +12 +2f +48
-        Block  6 (6)  @+85: 3 b68a (3969a) +69 +35 +7a +89
-    Track 2 (2): Underworld Theme
-        Block  7 (7)  @+8c: 3 b71d (3972d) +5f +30 +72 +81 (loop point)
-    Track 3 (3): Underwater Theme
-        Block  8 (8)  @+bd: 5 c073 (3a083) +4b  +0 +ae +95
-        Block  9 (9)  @+54: 0 bbe7 (39bf7) +19  +d  +0  +0 (loop point)
-        Block 10 (a)  @+5b: 0 bc07 (39c17) +37 +1c +b2 +b8
-        Block 11 (b)  @+5b
-    Track 4 (4): Fortress Theme
-        Block 12 (c)  @+62: 0 bc5f (39c6f) +39 +1d +5a +60 (loop point)
-        Block 13 (d)  @+38: 0 c218 (3a228) +1f +10  +0 +2e
-        Block 14 (e)  @+38
-    Track 5 (5): Koopa Kids
-        Block 15 (f)  @+3f: 0 c251 (3a261) +15  +a  +0 +1e
-        Block 16 (10) @+c4: 4 bcc5 (39cd5) +31 +19 +3c +59 (loop point)
-        Block 17 (11) @+cb: 4 bd3f (39d4f) +45 +23 +5c +62
-        Block 18 (12) @+cb
-    Track 6 (6): Airship Theme
-        Block 19 (13) @+d2: 4 bda7 (39db7) +45 +23 +64 +6a (loop point)
-        Block 20 (14) @+46: 0 c124 (3a134) +19  +d  +0 +29
-    Track 7 (7): Hammer Bros.
-        Block 21 (15) @+4d: 0 c167 (3a177) +51 +29 +7d +88
-        Block 22 (16) @+a1: 3 b87a (3988a)  +d  +7  +0 +13
-        Block 23 (17) @+a8: 3 b8a5 (398b5) +2b  +0 +3c +42
-        Block 24 (18) @+a8                 (loop point)
-        Block 25 (19) @+af: 3 b8a8 (398b8) +28 +16 +39 +3f
-        Block 26 (1a) @+af
-    Track 8 (8): Toad's House
-        Block 27 (1b) @+b6: 3 b8ed (398fd) +43 +22 +64 +85 (loop point)
-        Block 28 (1c) @+93: 0 c000 (3a010) +27 +14  +0 +70
-        Block 29 (1d) @+93
-    Track 9 (9): Overworld Theme 2
-        Block 30 (1e) @+9a: 0 c038 (3a048) +27 +14  +0 +38
-        Block 31 (1f) @ +0: 3 b999 (399a9) +21 +11  +0  +0 (loop point)
-        Block 32 (20) @ +7: 3 b9c1 (399d1) +32 +15 +73 +83
-        Block 33 (21) @ +e: 3 ba02 (39a12) +23 +12 +32 +42
-        Block 34 (22) @+15: 3 b9c1 (399d1) +32 +29 +73 +83
-        Block 35 (23) @+1c: 3 ba53 (39a63) +52 +29 +7b +8b
-        Block 36 (24) @+23: 3 bb04 (39b14) +26 +15 +68 +6e
-        Block 37 (25) @+2a: 3 bb3a (39b4a) +23 +13 +32 +38
-        Block 38 (26) @+23
-    Track 10 (a): Toad's House
-        Block 27 (1b) @+b6: 3 b8ed (398fd) +43 +22 +64 +85 (loop point)
-        Block 28 (1c) @+93: 0 c000 (3a010) +27 +14  +0 +70
-        Block 29 (1d) @+93
-    Track 11 (b): Bowser Battle
-        Block 39 (27) @+31: 3 bb79 (39b89) +36 +1c +46 +59
-        Block 40 (28) @+d9: 7 b7c3 (397d3) +1b  +e +28  +0 (loop point)
-        Block 41 (29) @+e0: 7 b7f8 (39808) +43 +22 +6e +78
-        Block 42 (2a) @+e7: 7 b7f8 (39808) +48 +22 +6e +78
-        Block 43 (2b) @+ee: 7 b7f8 (39808) +53 +22 +6e +78
+        Track 1 (1): Overworld Theme 1
+                Block  1 (1)  @+69: 3 b554 (39564) +29 +18 +41 +45
+                Block  2 (2)  @+70: 3 b5a9 (395b9) +54 +2c +af +be (loop point)
+                Block  3 (3)  @+77: 3 b5c3 (395d3) +50 +2b +95 +a4
+                Block  4 (4)  @+70
+                Block  5 (5)  @+7e: 3 b629 (39639) +21 +12 +2f +48
+                Block  6 (6)  @+85: 3 b68a (3969a) +69 +35 +7a +89
+                Block  7 (7)  @+8c: 3 b71d (3972d) +5f +30 +72 +81
+        Track 2 (2): Underworld Theme
+                Block  8 (8)  @+bd: 5 c073 (3a083) +4b  +0 +ae +95 (loop point)
+        Track 3 (3): Underwater Theme
+                Block  9 (9)  @+54: 0 bbe7 (39bf7) +19  +d  +0  +0
+                Block 10 (a)  @+5b: 0 bc07 (39c17) +37 +1c +b2 +b8 (loop point)
+                Block 11 (b)  @+5b
+                Block 12 (c)  @+62: 0 bc5f (39c6f) +39 +1d +5a +60
+        Track 4 (4): Fortress Theme
+                Block 13 (d)  @+38: 0 c218 (3a228) +1f +10  +0 +2e (loop point)
+                Block 14 (e)  @+38
+                Block 15 (f)  @+3f: 0 c251 (3a261) +15  +a  +0 +1e
+        Track 5 (5): Koopa Kids
+                Block 16 (10) @+c4: 4 bcc5 (39cd5) +31 +19 +3c +59
+                Block 17 (11) @+cb: 4 bd3f (39d4f) +45 +23 +5c +62 (loop point)
+                Block 18 (12) @+cb
+                Block 19 (13) @+d2: 4 bda7 (39db7) +45 +23 +64 +6a
+        Track 6 (6): Airship Theme
+                Block 20 (14) @+46: 0 c124 (3a134) +19  +d  +0 +29 (loop point)
+                Block 21 (15) @+4d: 0 c167 (3a177) +51 +29 +7d +88
+        Track 7 (7): Hammer Bros.
+                Block 22 (16) @+a1: 3 b87a (3988a)  +d  +7  +0 +13
+                Block 23 (17) @+a8: 3 b8a5 (398b5) +2b  +0 +3c +42
+                Block 24 (18) @+a8
+                Block 25 (19) @+af: 3 b8a8 (398b8) +28 +16 +39 +3f (loop point)
+                Block 26 (1a) @+af
+                Block 27 (1b) @+b6: 3 b8ed (398fd) +43 +22 +64 +85
+        Track 8 (8): Toad's House
+                Block 28 (1c) @+93: 0 c000 (3a010) +27 +14  +0 +70 (loop point)
+                Block 29 (1d) @+93
+                Block 30 (1e) @+9a: 0 c038 (3a048) +27 +14  +0 +38
+        Track 9 (9): Overworld Theme 2
+                Block 31 (1f) @ +0: 3 b999 (399a9) +21 +11  +0  +0
+                Block 32 (20) @ +7: 3 b9c1 (399d1) +32 +15 +73 +83 (loop point)
+                Block 33 (21) @ +e: 3 ba02 (39a12) +23 +12 +32 +42
+                Block 34 (22) @+15: 3 b9c1 (399d1) +32 +29 +73 +83
+                Block 35 (23) @+1c: 3 ba53 (39a63) +52 +29 +7b +8b
+                Block 36 (24) @+23: 3 bb04 (39b14) +26 +15 +68 +6e
+                Block 37 (25) @+2a: 3 bb3a (39b4a) +23 +13 +32 +38
+                Block 38 (26) @+23
+                Block 39 (27) @+31: 3 bb79 (39b89) +36 +1c +46 +59
+        Track 10 (a): Toad's House
+                Block 28 (1c) @+93: 0 c000 (3a010) +27 +14  +0 +70 (loop point)
+                Block 29 (1d) @+93
+                Block 30 (1e) @+9a: 0 c038 (3a048) +27 +14  +0 +38
+        Track 11 (b): Bowser Battle
+                Block 40 (28) @+d9: 7 b7c3 (397d3) +1b  +e +28  +0
+                Block 41 (29) @+e0: 7 b7f8 (39808) +43 +22 +6e +78 (loop point)
+                Block 42 (2a) @+e7: 7 b7f8 (39808) +48 +22 +6e +78
+                Block 43 (2b) @+ee: 7 b7f8 (39808) +53 +22 +6e +78
+                Block 44 (2c) @+f5: 7 b7f8 (39808) +65 +22 +6e +78
+        Track 12 (c): Unused
+                Block 45 (2d) @+fc: 4 bcc5 (39cd5) +31 +19  +0  +0 (loop point)
 				
 Bank 1 Track Structures
 
@@ -650,3 +667,11 @@ E3DC    STA $07F3
 E3DF    LDA $B433,Y
 E3E2    STA $04D2
 E3E5    STA $04DE
+
+Revisions
+
+v1.1:
+- As it turns out, the way SMB3 mixes 0-based and 1-based indexing is so confusing I got confused writing the spec. This revision fixes that error and attempts to clarify the subject so as to prevent any further mishaps.
+- Add table of noise preset characteristics
+- Unhid the unused track that was previous hidden because it's junk
+- Various other small changes meant to increase clarify
