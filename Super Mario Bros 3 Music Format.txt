@@ -1,5 +1,5 @@
 SUPER MARIO BROS. 3 MUSIC FORMAT
-v1.1 Beta
+v1.1
 
 By Justin Olbrantz (Quantam)
 
@@ -76,7 +76,7 @@ The following additional constraints also exist to make romhacking harder:
 - Bank 1 has space for $2c entries in its block header offset table (i.e. the playlist size) and $24 block headers (though 2 headers partially overlap), bank 2 has space for $2d entries in its block header offset table and $25 block headers.
 - Theoretical maximum of $ff block header offset entries and $25 block headers per bank if structures are relocated
 
-All music code and data is stored in banks $1c/$1d at $a000-dfff and bank $1f at $e000-$ffff. To convert addresses to file offsets:
+All music code and data is stored in ROM banks $1c/$1d at $a000-dfff and bank $1f at $e000-$ffff. To convert addresses to file offsets:
 	For addresses $a000-$dfff: file offset = addr + $2e010
 	For addresses $e000-$ffff: file offset = addr + $30010
 
@@ -104,16 +104,16 @@ Bank 1:
 1C:a76c structs ($101 bytes): Block headers block. Note that this is NOT an array, and block headers are not necessarily aligned.
 1C:a86c byte[$f]: 0-based first track block index
 1C:a87b byte[$f]: 0-based last track block index
-1C:a88a byte[$f]: 0-based loop track block index
+1C:a88a byte[$f]: 0-based loop track block index, or 0 if no loop
 
 Bank 2:
 1C:b3ff byte[$2d]: Block header offset table
 1C:b42d structs ($103 bytes): Block headers block. Same caveats.
 1C:b52f byte[$c]: 0-based first track block index
 1C:b53b byte[$c]: 0-based last track block index
-1C:b547 byte[$c]: 0-based loop track block index
+1C:b547 byte[$c]: 0-based loop track block index, or 0 if no loop
 
-NOTE: The track block indices given in the above arrays are 0-based, while the block header offset table (as well as the track block index tables themselves) is accessed with 1-based indices. E.g. for bank 1's first track, 1C:b530 (index 1 of the first track block index table) = 8; this block's header offset can then be found at 1C:a748 (index 9 of the block header offset table).
+NOTE: The track block indices given in the above arrays are 0-based, while the block header offset tables (as well as the track block index tables themselves) are accessed with 1-based indices. E.g. for bank 1's first track, 1C:b530 (index 1 of the first track block index table) = 8; this block's header offset can then be found at 1C:a748 (index 9 of the block header offset table). This means it is impossible for a track to loop to block 1, as that would be a loop block index of 0, which means no loop.
 
 See the Additional Tables section for information on relocating these structures.
 
@@ -121,7 +121,7 @@ Time and Tempo
 
 As already stated, SMB3 supports the following tempos in BPM: 0: 112.5, 1: 120, 2: 128.6, 3: 150, 4: 180, 5: 200, 6: 225, 7: 257.1, 8: 300, 9: 450.
 
-The SMB3 engine uses a hybrid of tempo and frame counting. Note lengths are converted at note start to frames the note should play at that tempo. This produces lengths of fractional frames at some length/tempo combinations, which the engine cannot deal with. This is handled by the primary/secondary system, in which the relevant lengths are assigned 2 length codes, a primary and a secondary, and a complete tuplet using these codes will produce the correct number of frames the tuplet should play combined. A triplet is made of 2 primary and 1 secondary length notes. A doublet of 16ths has 1 primary and 1 secondary length note, though at tempos where the primary and secondary lengths are the same, Kondo often does not distinguish between the 2. At some tempos this can be exploited for a very slight swing rhythm; for more information see the full note length table in Additional Tables.
+The SMB3 engine uses a hybrid of tempo and frame counting. Note lengths are converted at note start to frames the note should play at that tempo. This produces lengths of fractional frames at some length/tempo combinations, which the engine cannot directly deal with. This is handled by the primary/secondary system, in which the relevant lengths are assigned 2 length codes, a primary and a secondary, and a complete tuplet using these codes will produce the correct number of frames the tuplet should play combined. A triplet is made of 2 primary and 1 secondary length notes. A doublet of 16ths has 1 primary and 1 secondary length note, though at tempos where the primary and secondary lengths are the same, Kondo often does not distinguish between the 2. At some tempos this can be exploited for a very slight swing rhythm; for more information see the full note length table in Additional Tables.
 
 Note Length Codes (pairs are primary/secondary):
 
@@ -169,7 +169,7 @@ The preset list for the DMC channel is as follows:
 	1: Bass/kick drum
 	2: Snare drum short
 	3: Snare rim
-	4: Snare drum long
+	4: Snare drum long (appears to be buggy and can play garbage data on longer notes)
 	5: Wood block
 	6: Bongo high
 	7: Bongo mid
@@ -185,13 +185,13 @@ The preset list for the DMC channel is as follows:
 	
 Channel Data Format
 
-Compared to other engines, and even compared to the track structure, channel data is extremely simple. The format has the same basic structure but differs slightly between channels, but the basic 3 commands are the same: play note, rest, and set note attributes, which sets the length for subsequent notes/rests and for the square channels the timbre. The square channels additionally have the ability to perform portamento between 2 notes, but this has limitations.
+Compared to other engines, and even compared to the track structure, channel data is extremely simple. The format differs slightly between channels, but the basic 3 commands are the same: play note, rest, and set note attributes, which sets the length for subsequent notes/rests and for the square channels the timbre. The square channels additionally have the ability to perform portamento between 2 notes, but this has limitations.
 
 Square Channel Data Format:
 00: Channel-specific:
 	Square 2: End of block
 	Square 1: Set ctrl 2 to $94 for the rest of the block. This is used in fanfare 1 (death).
-7e: Rest for the current note duration. Sets the envelope to sustain: the last sample of the envelope, which is silence for most envelopes, is continued until the next note command.
+7e: Rest for the current note duration. Sets the envelope to sustain: the envelope position is set to its last entry - which is silence for most envelopes - which is continued until the next note command.
 ff 0KKK KKK0: Portamento target:
 	IMMEDIATELY following a note: Modifies the previous note (only a single note duration occurs for the whole thing) to play linear period portamento from previous key k to K (K > k). The pitch rises (period decreases) at a rate of 3/4 period units per frame. Portamento will NOT work properly (if at all) if the target key is lower than the base key or if the portamento crosses a $100-period boundary above B1, below D2, ~F2, below A2, below D3, below A3, or below A4.
 	After anything else: Does nothing and should not be used
@@ -206,7 +206,7 @@ Triangle Channel Data Format:
 
 Noise Channel Data Format:
 00: Loop. Restart noise events for this block.
-01: Rest for the current note duration. Silences channel.
+01: Rest for the current note duration. Silences channel. This actually plays noise preset 0, which sets the noise channel volume to 0.
 8L (1--- LLLL): Set note length code to L for subsequent notes. MUST NOT be immediately followed by another length command.
 0000 0kk-: Play noise preset k (1-3) for the current note duration.
 
@@ -274,7 +274,7 @@ DMC Channel (the tempo for this block is 0: 112.5 BPM):
 	k = 5: Wood block
 00: Loop. The full block is 256 frames, so this 32-frame loop will play 8 times.
 
-As can be seen, square 1 and triangle channels are never explicitly terminated, while noise and DMC channels need only be explicitly terminated when they loop.
+As can be seen, square 1 and triangle channels are never explicitly terminated, while noise and DMC channels need only be explicitly terminated when they loop before square 2 data ends.
 
 Square Wave Timbres
 
@@ -673,5 +673,5 @@ Revisions
 v1.1:
 - As it turns out, the way SMB3 mixes 0-based and 1-based indexing is so confusing I got confused writing the spec. This revision fixes that error and attempts to clarify the subject so as to prevent any further mishaps.
 - Add table of noise preset characteristics
-- Unhid the unused track that was previous hidden because it's junk
-- Various other small changes meant to increase clarify
+- Unhid the unused track that was previously hidden because it's junk
+- Various other small changes meant to increase clarity
